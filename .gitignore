@@ -1,0 +1,20 @@
+.dev/
+node_modules/
+*.log
+.data/
+
+# Credenziali e stato locale: devono restare sul computer.
+.env
+.env.*
+!.env.example
+auth.json
+accounts.dpapi*
+runtime.json
+endpoint.json
+server.lock
+switch-status.json
+startup-error.txt
+browser/
+hub-browser/
+work/
+*.tmp

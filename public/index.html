@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MultiCodex · I tuoi account</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="MultiCodex"><img src="/icon.svg" alt=""><span>MultiCodex<span class="brand-caption">ACCOUNT HUB</span></span></a>
+    <div class="side-label">IL TUO SPAZIO</div>
+    <nav class="main-nav" aria-label="Menu principale"><button id="nav-accounts" class="nav-item nav-current" aria-current="page"><span>▦</span> Account <span id="account-count" class="nav-count">0</span></button><button id="nav-settings" class="nav-item"><span>⚙</span> Impostazioni</button></nav>
+    <div class="side-bottom"><span class="local-dot"></span> Sul tuo computer<p>Accessi protetti da Windows.<br>Le password restano a te.</p><button class="link-button" id="help-button">Come funziona ↗</button><span class="version">VERSIONE 0.2.0 · WINDOWS</span></div>
+  </aside>
+  <main>
+    <div id="connection-error" class="banner error" hidden></div>
+    <section id="accounts-page">
+    <header><div><div class="eyebrow">UN SOLO POSTO, TUTTI I TUOI ACCOUNT</div><h1>I tuoi account<span class="title-dot">.</span></h1><p class="subtitle">Controlla la disponibilità e scegli con quale account continuare in Codex.</p></div><div class="header-actions"><button class="button secondary" id="refresh-all">↻ <span>Aggiorna</span></button><button class="button primary" id="add-account">＋ Aggiungi account</button></div></header>
+    <section class="overview" aria-label="Riepilogo"><div><span class="overview-label">ACCOUNT COLLEGATI</span><strong id="summary-count">—</strong></div><div><span class="overview-label">ACCOUNT ATTIVO</span><strong id="summary-active" class="summary-active">—</strong></div><div><span class="overview-label">BANKED RESET TOTALI</span><strong id="summary-resets">—</strong></div><div class="overview-status"><span class="local-dot"></span><span id="operation-status" role="status">Connessione all’hub…</span></div></section>
+    <div id="flow-banner" class="banner" hidden></div>
+    <div id="switch-banner" class="banner" hidden></div>
+    <div class="section-title"><h2>Disponibilità degli account</h2><span>Percentuali di utilizzo <b>rimasto</b></span></div>
+    <section id="accounts" class="accounts" aria-label="Account ChatGPT"></section>
+    <div id="empty" class="empty" hidden><div class="empty-symbol">＋</div><h2>Il primo account, poi tutti gli altri.</h2><p>Aggiungi un account oppure importa quello già aperto in Codex.</p><button class="button secondary" id="import-current">Importa account attuale</button></div>
+    <footer><span>Il cambio account riavvia Codex. Usalo quando le attività in corso sono terminate.</span><span id="poll-note">Dati aggiornati all’apertura · aggiornamento manuale disponibile</span></footer>
+    </section>
+    <section id="settings-page" hidden>
+      <header><div><div class="eyebrow">PERSONALIZZA IL TUO HUB</div><h1>Impostazioni<span class="title-dot">.</span></h1><p class="subtitle">Scegli come e quando aggiornare la disponibilità degli account.</p></div></header>
+      <form id="settings-form" class="settings-panel">
+        <div class="settings-heading"><h2>Aggiornamento dei dati</h2><p>Le preferenze vengono salvate e mantenute anche dopo la chiusura dell’hub.</p></div>
+        <fieldset class="mode-choices"><legend>Modalità di aggiornamento</legend><label class="mode-choice"><input type="radio" name="refresh-mode" value="manual" checked><span><strong>Manuale</strong><small>Aggiorna tutti gli account dal pulsante in alto oppure un singolo account dalla sua scheda.</small></span></label><label class="mode-choice"><input type="radio" name="refresh-mode" value="automatic"><span><strong>Automatico</strong><small>Aggiorna con gli intervalli indicati, solo mentre la finestra dell’hub è visibile.</small></span></label></fieldset>
+        <fieldset id="refresh-intervals" class="interval-fields" disabled><legend>Intervalli di aggiornamento</legend><div class="interval-grid"><div><label for="active-interval">Account attivo</label><div class="number-unit"><input id="active-interval" type="number" min="10" max="86400" step="1" value="60" required><span>secondi</span></div><p>Valore iniziale: 60 secondi.</p></div><div><label for="inactive-interval">Account inattivi</label><div class="number-unit"><input id="inactive-interval" type="number" min="1" max="1440" step="1" value="5" required><span>minuti</span></div><p>Valore iniziale: 5 minuti per ogni account.</p></div></div></fieldset>
+        <p class="settings-note">Gli aggiornamenti si sospendono quando la finestra è nascosta o chiusa e durante un accesso o un cambio account. In caso di errore, l’hub attende prima di riprovare. I pulsanti Aggiorna restano disponibili anche in modalità automatica.</p>
+        <div id="settings-error" class="form-error" role="alert"></div><div class="settings-actions"><span id="settings-save-state" role="status"></span><button type="button" class="button secondary" id="settings-defaults">Ripristina valori iniziali</button><button type="submit" class="button primary" id="save-settings">Salva impostazioni</button></div>
+      </form>
+      <section class="settings-panel name-explanation"><h2>Nomi degli account</h2><p>Ogni scheda distingue il <b>nome del profilo attuale</b>, lo <b>username</b> e il <b>nome dell’accesso</b> salvato nelle credenziali. Possono essere diversi. L’etichetta e l’email GamsGo restano modificabili da Modifica.</p></section>
+    </section>
+  </main>
+  <dialog id="account-dialog">
+    <form id="account-form"><div class="dialog-top"><span class="eyebrow" id="dialog-eyebrow">NUOVO ACCESSO</span><button type="button" class="icon-button" id="close-dialog" aria-label="Chiudi">×</button></div><h2 id="dialog-title">Aggiungi un account</h2><p id="dialog-description">Si aprirà una finestra browser separata. Accedi lì con l’account da aggiungere.</p><label for="account-label">Etichetta nell’hub <span>facoltativa</span></label><input id="account-label" name="label" maxlength="254" placeholder="Nome profilo (automatico)"><p class="field-note">Il nome profilo è l’etichetta iniziale. Puoi personalizzarla oppure lasciare vuoto per seguire il nome profilo.</p><label for="personal-email">Email GamsGo <span>facoltativa · separata dall’account</span></label><input id="personal-email" name="personalEmail" type="email" maxlength="254" placeholder="Email del tuo account GamsGo"><p class="field-note">Facoltativa. Se inserita, appare sotto l’email dell’account; se vuota, non viene mostrata.</p><div id="dialog-error" class="form-error" role="alert"></div><div class="dialog-actions"><button type="button" class="button secondary" id="cancel-dialog">Annulla</button><button type="submit" class="button primary" id="save-account">Apri accesso</button></div></form>
+  </dialog>
+  <dialog id="help-dialog"><div class="dialog-top"><span class="eyebrow">PRIMI PASSI</span><button class="icon-button" id="close-help" aria-label="Chiudi">×</button></div><h2>Da qui gestisci tutti gli account.</h2><ol class="help-steps"><li><b>Aggiungi account.</b> Accedi nella finestra dedicata. Puoi aggiungerne quanti ne vuoi, anche in seguito.</li><li><b>Personalizza.</b> «Modifica» cambia l’etichetta e la tua email GamsGo. Nome ed email ChatGPT arrivano dall’account.</li><li><b>Controlla la disponibilità.</b> «Aggiorna» legge i limiti. Se un dato manca, viene indicato come non disponibile.</li><li><b>Continua in Codex.</b> «Usa questo account» riavvia l’app con l’accesso selezionato. Termina prima le attività in corso.</li><li><b>Rinnova solo quando serve.</b> «Ricollega» apre l’accesso dedicato per l’account scelto.</li></ol><p class="field-note">I banked reset sono visualizzati a titolo informativo: l’hub non li consuma. La rimozione di un account dall’hub non elimina l’account ChatGPT.</p><p class="field-note">Al primo cambio, controlla nome ed email nel profilo di Codex: la verifica finale nell’interfaccia dell’app richiede questa prova.</p></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

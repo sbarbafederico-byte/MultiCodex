@@ -1,0 +1,9 @@
+{
+  "name": "multicodex",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Hub locale Windows per gli account Codex",
+  "scripts": { "start": "node src/server.mjs", "test": "node --test" },
+  "engines": { "node": ">=22" }
+}
