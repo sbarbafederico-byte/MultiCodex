@@ -27,6 +27,24 @@ Ogni scheda distingue **Nome profilo**, **Username**, **Nome accesso** ed **Emai
 
 Date e orari sono mostrati nel fuso **Europe/Rome**. I reset non vengono consumati dall’hub. Un reset già trascorso viene segnalato come in attesa di aggiornamento; non si inventano nuove percentuali.
 
+## Progetti e conversazioni
+
+La voce **Progetti** mostra i progetti locali collegati all’app Codex. Puoi cercarli per nome o percorso e ordinarli come in Codex, per nome, ultima attività, dimensione o prompt registrati. **Dettagli** apre le cartelle associate, i percorsi dei dati Codex e delle conversazioni, le attività, la reportistica del disco, lo stato Git e l’elenco delle conversazioni. Ogni conversazione espone i propri percorsi, compresi i database condivisi e gli eventuali file non più presenti. Cliccando una conversazione puoi leggere i prompt e le risposte, comprese le note di avanzamento, e caricare i messaggi precedenti. Non vengono mostrati ragionamenti interni o output degli strumenti.
+
+La lettura usa esclusivamente i cataloghi locali di Codex (`.codex-global-state.json`, `state_5.sqlite`, `thread_history_1.sqlite` e i cataloghi precedenti, quando presenti). I database SQLite sono aperti **in sola lettura**; come ripiego si leggono i file delle conversazioni locali. Non si avviano motori Codex, non si effettuano accessi agli account e non si interrogano servizi remoti per questa sezione. I dati riguardano i progetti e le conversazioni conservati nel profilo locale, indipendentemente dall’account attivo nell’hub; non sono un inventario delle chat cloud di tutti gli account.
+
+I progetti migrati vengono unificati per percorso e le conversazioni assegnate tramite il progetto salvato o la cartella di lavoro più specifica. Le conversazioni dei sottoagenti sono conteggiate separatamente e non aumentano il numero dei tuoi prompt. I conteggi comprendono le conversazioni archiviate. Cronologie assenti o non leggibili sono segnalate: un conteggio parziale non viene presentato come completo. Le modifiche della conversazione in corso compaiono dopo che Codex le ha salvate e dopo **Aggiorna progetti**.
+
+La prima apertura della sezione avvia una scansione in background; i successivi aggiornamenti si richiedono con **Aggiorna progetti**. Le impostazioni di aggiornamento degli account non si applicano ai progetti. Il catalogo e i risultati restano nella memoria dell’hub; nessuna copia delle conversazioni viene scritta nella cartella del repository.
+
+**File progetto** è la dimensione logica dei file: include file nascosti, `.git`, dipendenze e output generati. Il dettaglio separa queste categorie e mostra tipi di file e file più grandi. I percorsi sovrapposti nello stesso progetto vengono deduplicati; lo spazio complessivo è la somma dei progetti e può contare più volte cartelle condivise tra progetti diversi. Non si seguono link simbolici o junction. Ogni scansione è limitata a circa 250.000 file, 2 minuti e 64 livelli di profondità per progetto; accessi negati e limiti producono risultati dichiaratamente parziali. Una cartella non trovata mantiene la propria scheda con spazio non disponibile.
+
+**Prima attività** usa il timestamp del primo messaggio utente disponibile nella cronologia, escludendo i sottoagenti. Se non è disponibile alcun timestamp di prompt, usa la data di aggiunta del progetto a Codex. **Ultima attività** considera i messaggi e gli aggiornamenti delle conversazioni. Le date di creazione della cartella e di aggiunta a Codex non vengono mostrate come campi separati. I token sono il contatore storico locale di Codex, non la percentuale di quota residua. Il tempo di elaborazione è la somma delle durate dei turni registrati, non il tempo totale trascorso a lavorare. Lo stato Git è letto con i lock opzionali disabilitati e confrontato solo con i riferimenti già presenti sul PC: nessun fetch, commit o push. Gli indirizzi dei remoti vengono ripuliti da credenziali e parametri prima di essere mostrati. Il formato dei cataloghi Codex è interno e può cambiare con gli aggiornamenti dell’app.
+
+**Dati Codex** riporta separatamente conversazioni, log e altri dati attribuibili al progetto (inclusi sottoagenti). I file delle sessioni, gli archivi compressi, gli artefatti e le cartelle identificate tramite gli ID delle conversazioni o del progetto vengono pesati senza aprirne il contenuto. Sono inclusi anche `.codex`, `AGENTS.md` e `AGENTS.override.md` nella cartella del progetto, quando presenti; questi file sono già compresi nel peso dei file del progetto, quindi i due totali non vanno sommati.
+
+Per i database di cronologia, log, stato, memorie e cataloghi viene misurato il contenuto logico delle righe associate tramite gli ID del progetto e delle conversazioni. Il totale dei dati Codex è **indicativo**: somma file dedicati e payload logico delle righe, senza pretendere una suddivisione fisica di pagine SQLite, indici, spazio libero o WAL. I percorsi dei database e dei relativi WAL/SHM mostrano anche la dimensione dell’intero archivio condiviso, che non viene attribuita per intero a ciascun progetto. Preferenze globali, cache e log senza un collegamento certo restano riferimenti condivisi o non attribuiti. Tutte le letture rimangono locali e in sola lettura.
+
 ## Stato della prima versione
 
 Verificati sull’installazione locale: individuazione del motore Codex, importazione del primo account, lettura reale dei due limiti e dei banked reset, crittografia Windows, avvio del collegamento e apertura della finestra. La lettura ha lasciato invariato il file di autenticazione usato dall’app.
@@ -39,7 +57,7 @@ L’hub riutilizza la cartella Codex esistente e non modifica il programma insta
 
 ## Installazione e avvio
 
-Richiede Windows, l’app Codex installata, **Node.js 22+** (anche quello già fornito dal runtime locale Codex) e Edge o Chrome. Non richiede API key né pacchetti npm.
+Richiede Windows, l’app Codex installata, **Node.js 22.13+** (anche quello già fornito dal runtime locale Codex) e Edge o Chrome. Non richiede API key né pacchetti npm.
 
 Per ricreare il collegamento, esegui `Installa-Collegamento.ps1` con Windows PowerShell. Il collegamento avvia `Avvia-MultiCodex.ps1`. Non spostare questa cartella senza ricreare il collegamento.
 

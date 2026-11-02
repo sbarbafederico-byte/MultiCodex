@@ -1,4 +1,5 @@
 'use strict';
+import { initProjects } from './projects.js';
 const $ = selector => document.querySelector(selector);
 const fragment = new URLSearchParams(location.hash.slice(1));
 if (fragment.has('token')) {
@@ -118,16 +119,16 @@ function applySettingsForm(settings) {
   $('#refresh-intervals').disabled = settings.refreshMode !== 'automatic';
 }
 function navigate(page) {
-  const settingsPage = page === 'settings';
-  $('#accounts-page').hidden = settingsPage;
-  $('#settings-page').hidden = !settingsPage;
-  $('#nav-accounts').classList.toggle('nav-current', !settingsPage);
-  $('#nav-settings').classList.toggle('nav-current', settingsPage);
-  $('#nav-accounts').toggleAttribute('aria-current', !settingsPage);
-  $('#nav-settings').toggleAttribute('aria-current', settingsPage);
-  if (settingsPage) $('#nav-settings').setAttribute('aria-current', 'page');
-  else $('#nav-accounts').setAttribute('aria-current', 'page');
-  sessionStorage.setItem('multicodex-page', settingsPage ? 'settings' : 'accounts');
+  if (!['accounts', 'projects', 'settings'].includes(page)) page = 'accounts';
+  for (const name of ['accounts', 'projects', 'settings']) {
+    $('#' + name + '-page').hidden = page !== name;
+    $('#nav-' + name).classList.toggle('nav-current', page === name);
+    if (page === name) $('#nav-' + name).setAttribute('aria-current', 'page');
+    else $('#nav-' + name).removeAttribute('aria-current');
+  }
+  sessionStorage.setItem('multicodex-page', page);
+  document.title = 'MultiCodex · ' + ({ accounts: 'I tuoi account', projects: 'I tuoi progetti', settings: 'Impostazioni' })[page];
+  projectsView.show(page === 'projects');
 }
 async function presence() {
   try { await api('presence', { clientId, visible: document.visibilityState === 'visible' }); } catch {}
@@ -168,6 +169,7 @@ function openAccountDialog(account = null) {
 $('#add-account').addEventListener('click', () => openAccountDialog());
 $('#nav-accounts').addEventListener('click', () => navigate('accounts'));
 $('#nav-settings').addEventListener('click', () => navigate('settings'));
+$('#nav-projects').addEventListener('click', () => navigate('projects'));
 $('#settings-form').addEventListener('input', () => {
   settingsDirty = true;
   $('#settings-save-state').textContent = 'Modifiche da salvare';
@@ -235,6 +237,7 @@ $('#accounts').addEventListener('click', event => {
       break;
   }
 });
+const projectsView = initProjects({ api, toast });
 navigate(sessionStorage.getItem('multicodex-page'));
 await load();
 await presence();
