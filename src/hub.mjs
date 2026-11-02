@@ -112,7 +112,7 @@ export class Hub {
   }
   snapshot() {
     return {
-      version: '0.3.1', busy: this.busy, notice: this.notice,
+      version: '0.4.0', busy: this.busy, notice: this.notice,
       settings: this.settings(), automaticRefreshActive: this.settings().refreshMode === 'automatic' && this.presence.visible(),
       login: this.publicLogin(), switchJob: this.switchJob,
       startupWarning: this.startupWarning,

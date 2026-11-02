@@ -10,11 +10,24 @@
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="MultiCodex"><img src="/icon.svg" alt=""><span>MultiCodex<span class="brand-caption">ACCOUNT HUB</span></span></a>
     <div class="side-label">IL TUO SPAZIO</div>
-    <nav class="main-nav" aria-label="Menu principale"><button id="nav-accounts" class="nav-item nav-current" aria-current="page"><span>▦</span> Account <span id="account-count" class="nav-count">0</span></button><button id="nav-projects" class="nav-item"><span>▤</span> Progetti <span id="project-count" class="nav-count">—</span></button><button id="nav-settings" class="nav-item"><span>⚙</span> Impostazioni</button></nav>
-    <div class="side-bottom"><span class="local-dot"></span> Sul tuo computer<p>Accessi protetti da Windows.<br>Le password restano a te.</p><button class="link-button" id="help-button">Come funziona ↗</button><span class="version">VERSIONE 0.3.1 · WINDOWS</span></div>
+    <nav class="main-nav" aria-label="Menu principale"><button id="nav-home" class="nav-item"><span>⌂</span> Home</button><button id="nav-accounts" class="nav-item nav-current" aria-current="page"><span>▦</span> Account <span id="account-count" class="nav-count">0</span></button><button id="nav-projects" class="nav-item"><span>▤</span> Progetti <span id="project-count" class="nav-count">—</span></button><button id="nav-settings" class="nav-item"><span>⚙</span> Impostazioni</button></nav>
+    <div class="side-bottom"><span class="local-dot"></span> Sul tuo computer<p>Accessi protetti da Windows.<br>Le password restano a te.</p><button class="link-button" id="help-button">Come funziona ↗</button><span class="version">VERSIONE 0.4.0 · WINDOWS</span></div>
   </aside>
   <main>
     <div id="connection-error" class="banner error" hidden></div>
+    <section id="home-page" hidden>
+      <header><div><div class="eyebrow">IL TUO LAVORO, ADESSO</div><h1>Home<span class="title-dot">.</span></h1><p class="subtitle">Prompt in corso, attività recente e disponibilità dei tuoi account.</p></div></header>
+      <div id="home-error" class="banner error" role="alert" hidden></div>
+      <div class="section-title"><h2>Disponibilità account</h2><button id="home-refresh-limits" class="button secondary">↻ Aggiorna limiti</button></div>
+      <div id="home-accounts" class="home-accounts"></div>
+      <div class="section-title home-section"><h2>Prompt in corso <span id="home-active-count" class="muted">0</span></h2><span id="home-updated" role="status">Lettura dell’attività locale…</span></div>
+      <div id="home-active" class="home-turns"></div>
+      <p class="home-note">Le percentuali per prompt sono variazioni osservate in punti percentuali fra il primo e l’ultimo campione locale dei limiti, non un costo esatto del prompt. Possono includere altre attività dell’account. Con un solo campione, un reset o dati mancanti compare «Non misurabile».</p>
+      <div class="section-title home-section"><h2>Ultimi 5 prompt terminati</h2><span>Compresi i turni interrotti o con errore</span></div>
+      <div id="home-recent" class="home-turns"></div>
+      <details id="home-uncertain" class="storage-group" hidden><summary>Sessioni il cui stato è da verificare</summary><p class="field-note">Risultano aperte nella cronologia, ma non sono confermate fra i turni attivi dell’app. Potrebbero essere state interrotte o provenire da un altro client.</p><div id="home-uncertain-list"></div></details>
+      <footer><span>Solo prompt principali · sottoagenti esclusi · aggiornamenti pubblici e risposte salvati da Codex.</span><span>La lettura dell’attività è locale. I limiti account seguono le Impostazioni.</span></footer>
+    </section>
     <section id="accounts-page">
     <header><div><div class="eyebrow">UN SOLO POSTO, TUTTI I TUOI ACCOUNT</div><h1>I tuoi account<span class="title-dot">.</span></h1><p class="subtitle">Controlla la disponibilità e scegli con quale account continuare in Codex.</p></div><div class="header-actions"><button class="button secondary" id="refresh-all">↻ <span>Aggiorna</span></button><button class="button primary" id="add-account">＋ Aggiungi account</button></div></header>
     <section class="overview" aria-label="Riepilogo"><div><span class="overview-label">ACCOUNT COLLEGATI</span><strong id="summary-count">—</strong></div><div><span class="overview-label">ACCOUNT ATTIVO</span><strong id="summary-active" class="summary-active">—</strong></div><div><span class="overview-label">BANKED RESET TOTALI</span><strong id="summary-resets">—</strong></div><div class="overview-status"><span class="local-dot"></span><span id="operation-status" role="status">Connessione all’hub…</span></div></section>

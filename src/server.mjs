@@ -7,12 +7,14 @@ import { timingSafeEqual } from 'node:crypto';
 import { Vault, atomicWrite } from './vault.mjs';
 import { Hub } from './hub.mjs';
 import { ProjectService } from './project-service.mjs';
+import { DashboardService } from './dashboard-service.mjs';
 import { loadEndpoint, listenLocal, saveEndpoint } from './endpoint.mjs';
 
 const root = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'MultiCodex');
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const vault = new Vault(root);
 const projects = new ProjectService(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
+const dashboard = new DashboardService(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
 const hub = new Hub(vault, { requireIndependentHost: true, independentHost: process.env.MULTICODEX_HOST === 'windows-task' });
 let token;
 const lockPath = path.join(root, 'server.lock');
@@ -66,8 +68,9 @@ async function request(req, res) {
   try {
     if (url.pathname.startsWith('/api/')) {
       if (!authorized(req)) return json(res, 401, { error: 'Sessione hub non valida. Riapri MultiCodex dal desktop.' });
-      if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { app: 'MultiCodex', pid: process.pid, version: '0.3.1', host: process.env.MULTICODEX_HOST || 'direct' });
+      if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { app: 'MultiCodex', pid: process.pid, version: '0.4.0', host: process.env.MULTICODEX_HOST || 'direct' });
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res, 200, hub.snapshot());
+      if (req.method === 'GET' && url.pathname === '/api/dashboard') return json(res, 200, dashboard.snapshot());
       if (req.method === 'GET' && url.pathname === '/api/projects') return json(res, 200, projects.status === 'idle' ? projects.scan() : projects.snapshot());
       const projectRoute = url.pathname.match(/^\/api\/projects\/([a-f0-9]{24})(?:\/conversations\/([a-zA-Z0-9_-]+))?$/);
       if (req.method === 'GET' && projectRoute) return json(res, 200, projectRoute[2] ? await projects.conversation(projectRoute[1], projectRoute[2], url.searchParams.get('before')) : projects.detail(projectRoute[1]));
@@ -96,7 +99,7 @@ async function request(req, res) {
       return json(res, 404, { error: 'Operazione non trovata.' });
     }
     if (req.method !== 'GET') return json(res, 405, { error: 'Metodo non consentito.' });
-    const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/projects.js': ['projects.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
+    const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/home.js': ['home.js', 'text/javascript'], '/projects.js': ['projects.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/icon.svg': ['icon.svg', 'image/svg+xml'] };
     const file = files[url.pathname];
     if (!file) return json(res, 404, { error: 'Pagina non trovata.' });
     res.writeHead(200, { 'Content-Type': file[1] + '; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -110,6 +113,7 @@ async function stop() {
   clearInterval(syncTimer);
   clearInterval(autoTimer);
   await projects.close();
+  await dashboard.close();
   if (hub.login?.status === 'pending') await hub.cancelLogin().catch(() => {});
   server?.close();
   await lockHandle?.close();

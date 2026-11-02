@@ -95,3 +95,11 @@ L’avvio diretto con Node è utile per lo sviluppo e la reportistica. Per un ca
 Riferimenti: [Autenticazione Codex](https://learn.chatgpt.com/docs/auth), [App-server e limiti](https://learn.chatgpt.com/docs/app-server).
 
 L’etichetta iniziale segue il nome profilo. Da Modifica puoi impostare un titolo personalizzato; lasciando il campo vuoto si torna al nome profilo automatico. La riga Email GamsGo compare immediatamente dopo Email account, con lo stesso stile, soltanto se compilata. I valori preesistenti del campo personale vengono conservati.
+
+## Home e attività in corso
+
+**Home** mostra i prompt principali in corso confermati dal catalogo dei turni attivi dell’app Codex, con progetto, testo, durata e aggiornamenti pubblici/risposte già salvati da Codex. I contenuti di reasoning interno e gli output degli strumenti non sono esposti. I turni che risultano aperti soltanto nella cronologia sono separati come stato da verificare; non sono dichiarati in esecuzione. Gli ultimi cinque turni terminati comprendono quelli completati, interrotti o con errore, escludendo i sottoagenti.
+
+La lettura della Home è locale e in sola lettura, in un worker separato dal server HTTP. Il browser la richiede ogni due secondi mentre la Home è visibile. La freschezza effettiva dipende dai salvataggi di Codex, dalla lettura degli archivi e dalla durata del turno. La Home non avvia modelli né sessioni Codex per monitorare i prompt. Il riepilogo account mostra soltanto nome, account attivo, quote residue delle cinque ore e settimanali e data dei limiti: segue le impostazioni di aggiornamento degli account, con un pulsante manuale separato.
+
+La percentuale del singolo prompt non è esposta direttamente da Codex. La Home mostra la **variazione osservata in punti percentuali** dei limiti di sessione fra il primo e l’ultimo campione disponibile nello stesso turno: è una misura indicativa che può includere attività parallele dell’account e non comprende la parte anteriore al primo campione. Non vengono convertiti token in percentuali. Un solo campione, un reset, una diminuzione dell’utilizzo o una finestra assente producono «Non misurabile», mai uno zero inventato. Un riavvio rilegge i campioni dal file di sessione, con lettura iniziale limitata a 16 MiB; se l’inizio del turno non è disponibile non viene attribuito un consumo.
