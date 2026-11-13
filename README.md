@@ -95,6 +95,8 @@ La versione 0.5.6 evita di riapplicare i permessi della cartella dati quando son
 
 La versione 0.5.7 sostituisce WMI/CIM nelle operazioni di rilevamento, controllo del processo indipendente e chiusura con uno snapshot nativo Windows. Legge PID, parentela e percorso eseguibile senza consultare righe di comando; distingue il processo desktop dai renderer tramite la parentela. Il rilevamento ha un limite di 15 secondi, riprova gli errori transitori durante l’avvio entro 90 secondi complessivi e non annulla il cambio al primo timeout. All’avvio riconosce anche un recupero già avvenuto quando desktop, motore e credenziali dell’account precedente sono nuovamente presenti; mantiene i checkpoint di invio dall’esito incerto. Riferimenti Windows: [snapshot dei processi](https://learn.microsoft.com/en-us/windows/win32/toolhelp/taking-a-snapshot-and-viewing-processes), [percorso eseguibile](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-queryfullprocessimagenamew).
 
+La versione 0.5.8 ritenta una volta il rilevamento anche durante l'avvio dell'hub e prima di cambiare o ripristinare account. Ogni tentativo usa un nuovo processo Windows; due errori consecutivi prima del cambio lasciano desktop e credenziali intatti. Il timeout distingue compilazione del lettore, snapshot dei processi, selezione desktop, ricerca installazione e verifica finestra. Nei controlli locali ripetuti il timeout intermittente non è stato riprodotto: questi dettagli servono a identificare la fase se ricompare, senza aumentare la scadenza di 15 secondi.
+
 Archivio in `%LOCALAPPDATA%\MultiCodex`:
 
 - `accounts.dpapi`: account, sessioni, email GamsGo e ultimi dati, cifrati con **Windows DPAPI CurrentUser**; `accounts.dpapi.bak` conserva la versione precedente cifrata.

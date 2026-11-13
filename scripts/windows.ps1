@@ -48,9 +48,11 @@ try {
         'Discover' {
             . (Join-Path $PSScriptRoot 'process-snapshot.ps1')
             $taskProcesses = @(Get-MultiCodexProcessSnapshot)
+            [Console]::Error.WriteLine('MULTICODEX_STAGE=desktop-selection')
             $taskApp = Get-MultiCodexDesktopRoots -Processes $taskProcesses | Select-Object -First 1
             $taskAppPath = if ($taskApp) { $taskApp.ExecutablePath } else { $null }
             if (-not $taskAppPath) {
+                [Console]::Error.WriteLine('MULTICODEX_STAGE=package-scan')
                 $taskPackages = @(Get-ChildItem -LiteralPath "$env:ProgramFiles\WindowsApps" -Directory -Filter 'OpenAI.Codex_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
                 foreach ($taskPackage in $taskPackages) {
                     foreach ($taskName in @('ChatGPT.exe','Codex.exe')) {
@@ -64,6 +66,7 @@ try {
             $taskAppAgent = if ($taskApp) { $taskClis | Where-Object { $_.ParentProcessId -eq $taskApp.ProcessId } | Select-Object -First 1 } else { $null }
             $taskCli = if ($taskAppAgent) { $taskAppAgent } else { $taskClis | Select-Object -First 1 }
             $taskCliPath = if ($taskCli) { $taskCli.ExecutablePath } elseif ($taskAppPath) { Join-Path (Split-Path $taskAppPath) 'resources\codex.exe' } else { $null }
+            [Console]::Error.WriteLine('MULTICODEX_STAGE=window-check')
             $taskWindowReady = if ($taskApp) { [bool](Get-Process -Id $taskApp.ProcessId -ErrorAction SilentlyContinue).MainWindowHandle } else { $false }
             @{ appPath=$taskAppPath; cliPath=$taskCliPath; pid=$(if ($taskApp) { $taskApp.ProcessId } else { $null }); appRunning=[bool]$taskApp; agentReady=[bool]$taskAppAgent; windowReady=$taskWindowReady } | ConvertTo-Json -Compress
         }

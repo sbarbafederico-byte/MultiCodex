@@ -454,6 +454,51 @@ test('manual settings are the default and custom intervals persist independently
   assert.equal(hub.settings().activeIntervalSeconds, 90);
 });
 
+test('switch preflight retries a failed fresh discovery before any desktop operation', async t => {
+  const { hub, calls } = await fixture(t);
+  const previous = auth('one');
+  await fs.writeFile(hub.authPath, JSON.stringify(previous));
+  hub.upsert(previous, identityFromAuth(previous));
+  const targetAuth = auth('two');
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  const discover = hub.discover;
+  let reads = 0;
+  hub.discover = async () => {
+    assert.equal(calls.length, 0);
+    if (++reads === 1) throw Object.assign(new Error('reader timed out'), { windowsAction: 'Discover' });
+    return discover();
+  };
+  assert.equal(await hub.performSwitch(target.id, { beforeStop: async () => false }), false);
+  assert.equal(reads, 2);
+  assert.ok(!calls.some(call => call.action === 'StopApp'));
+  assert.deepEqual(JSON.parse(await fs.readFile(hub.authPath, 'utf8')), previous);
+});
+
+test('persistent preflight discovery failure is bounded and leaves credentials and desktop untouched', async t => {
+  const { hub, calls } = await fixture(t);
+  const previous = auth('one');
+  await fs.writeFile(hub.authPath, JSON.stringify(previous));
+  hub.upsert(previous, identityFromAuth(previous));
+  const targetAuth = auth('two');
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  let reads = 0;
+  const failure = Object.assign(new Error('reader timed out'), { windowsAction: 'Discover' });
+  hub.discover = async () => { reads++; throw failure; };
+  await assert.rejects(hub.performSwitch(target.id), error => error === failure);
+  assert.equal(reads, 2);
+  assert.equal(calls.length, 0);
+  assert.equal(hub.vault.data.switchJournal, undefined);
+  assert.deepEqual(JSON.parse(await fs.readFile(hub.authPath, 'utf8')), previous);
+});
+
+test('preflight does not retry unrelated discovery errors', async t => {
+  const { hub } = await fixture(t);
+  let reads = 0;
+  hub.discover = async () => { reads++; throw new SyntaxError('invalid discovery output'); };
+  await assert.rejects(hub.discoverBeforeChange(), SyntaxError);
+  assert.equal(reads, 1);
+});
+
 test('continuity captures only after switch preflight and can cancel before closing the desktop', async t => {
   const { hub, calls } = await fixture(t);
   const previous = auth('one');

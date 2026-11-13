@@ -16,8 +16,8 @@ return function windows(action, input = {}) {
     let output = '', stderr = '';
     const timer = setTimeout(() => {
       child.kill();
-      const stage = [...stderr.matchAll(/MULTICODEX_STAGE=(input|execute|permissions|complete)/g)].at(-1)?.[1];
-      const stageLabels = { input: 'lettura comando', execute: 'esecuzione comando', permissions: 'applicazione permessi', complete: 'chiusura processo' };
+      const stageLabels = { input: 'lettura comando', execute: 'esecuzione comando', permissions: 'applicazione permessi', complete: 'chiusura processo', 'compile-process-reader': 'compilazione lettore processi', 'process-snapshot': 'lettura processi Windows', 'desktop-selection': 'selezione desktop', 'package-scan': 'ricerca installazione', 'window-check': 'verifica finestra' };
+      const stage = [...stderr.matchAll(/MULTICODEX_STAGE=([a-z-]+)/g)].map(match => match[1]).filter(value => stageLabels[value]).at(-1);
       const error = new Error(`Tempo scaduto durante ${actionLabels[action] || action} (${timeoutMs / 1000} secondi${stage ? '; ' + stageLabels[stage] : '; avvio PowerShell'}).`);
       error.windowsAction = action;
       reject(error);

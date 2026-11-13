@@ -59,6 +59,19 @@ test('credential operations do not expose upstream stderr on failure', async () 
   await assert.rejects(result, error => !error.message.includes('private-token'));
 });
 
+test('discovery timeout identifies its last reader phase and ignores unknown phases', async () => {
+  const child = processStub();
+  const run = createWindowsRunner({ spawnProcess: () => child, timeoutMs: 20 });
+  const result = run('Discover');
+  child.stderr.write('MULTICODEX_STAGE=execute\nMULTICODEX_STAGE=compile-process-reader\nMULTICODEX_STAGE=private-token\n');
+  await assert.rejects(result, error => {
+    assert.equal(error.windowsAction, 'Discover');
+    assert.match(error.message, /compilazione lettore processi/);
+    assert.ok(!error.message.includes('private-token'));
+    return true;
+  });
+});
+
 test('production Windows interop definitions compile in Windows PowerShell', { skip: process.platform !== 'win32' }, async () => {
   const powershell = path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe');
   const script = fileURLToPath(new URL('../scripts/Test-WindowsInterop.ps1', import.meta.url));

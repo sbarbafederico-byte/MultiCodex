@@ -47,7 +47,7 @@ export class Hub {
     await this.vault.load();
     this.vault.data.settings = validateSettings({ ...DEFAULT_SETTINGS, ...this.vault.data.settings });
     await this.recoverWork();
-    this.runtime = await this.discover();
+    this.runtime = await this.discoverBeforeChange();
     if (!this.runtime.cliPath) throw new Error('Motore Codex non trovato. Apri Codex e riavvia MultiCodex.');
     await this.syncCurrent(true);
     await this.reconcileInterruptedClose();
@@ -405,6 +405,18 @@ export class Hub {
     }, 200);
     return { ok: true };
   }
+  async discoverBeforeChange() {
+    // A transient PowerShell/process-reader failure must not abort preflight.
+    // Each call starts a fresh process; never reuse the timed-out reader or
+    // substitute cached readiness before touching desktop credentials.
+    for (let attempt = 0; ; attempt++) {
+      try { return await this.discover(); }
+      catch (error) {
+        if (error.windowsAction !== 'Discover' || attempt >= 1) throw error;
+        await this.sleep(1000);
+      }
+    }
+  }
   async waitForDesktop(expectedKey) {
     const deadline = Date.now() + this.readinessTimeoutMs;
     let readFailed = false;
@@ -464,7 +476,7 @@ export class Hub {
     this.switchJob = { targetId: id, status: 'running', message: 'Verifica dell’account selezionato…' };
     const target = this.vault.find(id);
     await this.syncCurrent(true);
-    this.runtime = await this.discover();
+    this.runtime = await this.discoverBeforeChange();
     if (!this.runtime.appPath) throw new Error('Installazione dell’app Codex non trovata.');
     if (target.key === this.activeKey) {
       await this.windows('LaunchApp', { path: this.runtime.appPath });
@@ -548,7 +560,7 @@ export class Hub {
       const journal = this.vault.data.switchJournal;
       if (!journal?.previousAuth) throw new Error('Nessun account precedente da ripristinare.');
       await this.verifyIndependentHost();
-      this.runtime = await this.discover();
+      this.runtime = await this.discoverBeforeChange();
       if (!this.runtime.appPath) throw new Error('App Codex non trovata.');
       await this.windows('StopApp', { path: this.runtime.appPath });
       await atomicWrite(this.authPath, JSON.stringify(journal.previousAuth, null, 2) + '\n');
