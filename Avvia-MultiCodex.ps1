@@ -26,7 +26,7 @@ try {
         if (-not $taskNode) { throw 'Node.js non trovato. Installa Node.js 22 o successivo, poi riapri MultiCodex.' }
         # Launch through the Windows scheduler, not as a child of Codex or its job object.
         & (Join-Path $taskRoot 'scripts\Start-HubTask.ps1') -NodePath $taskNode
-        $taskDeadline = [DateTime]::UtcNow.AddSeconds(45)
+        $taskDeadline = [DateTime]::UtcNow.AddSeconds(120)
         do {
             Start-Sleep -Milliseconds 400
             $taskRuntime = Get-HubRuntime
@@ -52,6 +52,10 @@ try {
     # Visible interactive application window, with a dedicated profile.
     Start-Process -FilePath $taskBrowser -ArgumentList ('--user-data-dir="' + $taskProfile + '" --no-first-run --app="' + $taskUrl + '" --window-size=1420,960')
 } catch {
+    if ($NoWindow) {
+        [Console]::Error.WriteLine($_.Exception.Message)
+        exit 1
+    }
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'MultiCodex', 'OK', 'Error') | Out-Null
     exit 1

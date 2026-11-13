@@ -53,12 +53,17 @@ test('Home separates confirmed activity and stale turns, selects last five finis
     insert.run(thread,turn,turn+'hidden',JSON.stringify({type:'agentMessage',text:'PRIVATE ANALYSIS',phase:'analysis'}),'agentMessage',n*4+3,1000000+n*1000,null);
   };
   for(let i=1;i<=7;i++) add('chat','done'+i,i===7?'failed':'completed',i);
-  add('chat','active','inProgress',20); add('stale','uncertain','inProgress',21); add('agent','agent-turn','inProgress',22); db.close();
+  add('chat','active','inProgress',20); add('stale','uncertain','inProgress',21); add('agent','agent-turn','inProgress',22);
+  db.exec('ALTER TABLE thread_turns ADD COLUMN error_json TEXT');
+  db.prepare('UPDATE thread_turns SET error_json=? WHERE turn_id=?').run(JSON.stringify({ codexErrorInfo: 'usageLimitExceeded', message: 'PRIVATE ERROR' }), 'done7');
+  db.close();
   const result = await new DashboardReader(home).read();
   assert.equal(result.error,null);
   assert.deepEqual(result.active.map(t=>t.id),['active']);
   assert.deepEqual(result.uncertain.map(t=>t.id),['uncertain']);
   assert.deepEqual(result.recent.map(t=>t.id),['done7','done6','done5','done4','done3']);
+  assert.equal(result.recent[0].limitReached, true);
+  assert.equal(result.recent[1].limitReached, false);
   assert.equal(result.active[0].project.name,'Project');
   assert.equal(result.active[0].messages[0].text,'Public progress');
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));

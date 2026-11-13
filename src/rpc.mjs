@@ -25,6 +25,7 @@ export class CodexRpc extends EventEmitter {
       let msg;
       try { msg = JSON.parse(line); } catch { return; }
       if (msg.id !== undefined && msg.method) {
+        this.emit('serverRequest', { method: msg.method, params: msg.params });
         this.send({ id: msg.id, error: { code: -32601, message: 'Unsupported request' } });
       } else if (msg.id !== undefined) {
         const pending = this.pending.get(msg.id);

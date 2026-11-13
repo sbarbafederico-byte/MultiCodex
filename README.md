@@ -21,6 +21,20 @@ Non occorre modificare script per aggiungere altri account. **Modifica** cambia 
 
 ## Impostazioni e nomi
 
+### Continuità dei prompt
+
+**Cambio account** è una preferenza separata dall’aggiornamento dei dati. Il valore iniziale è **Manuale**: «Usa questo account» salva i riferimenti delle attività attive, riavvia Codex e tenta di continuarle nelle conversazioni originali. Selezionare l’account già attivo apre soltanto Codex.
+
+Con **Automatico**, il servizio controlla le attività locali ogni 10 secondi e legge i limiti dell’account attivo secondo l’intervallo configurato (60 secondi iniziali), anche con aggiornamento dati manuale e finestra dell’hub chiusa. Quando una quota verificata delle 5 ore o settimanale è esaurita, aggiorna gli altri account e sceglie fra quelli con entrambe le disponibilità positive e verificate. Dati mancanti, più vecchi di due minuti, reset già trascorsi e accessi non validi escludono il candidato. Il servizio deve essere in esecuzione tramite il collegamento desktop indipendente.
+
+In Impostazioni puoi scegliere **Più disponibilità nelle 5 ore**, **Più disponibilità settimanale**, **In ordine di aggiunta** o **Ordine personalizzato** tramite frecce su/giù. I due ordini ruotano a partire dall’account attivo, saltano gli account non utilizzabili e ripartono dal primo dopo l’ultimo. In caso di pari quota prevale l’ordine di aggiunta. Gli account nuovi vengono aggiunti in fondo all’ordine personalizzato. Se non ci sono candidati, viene mostrato uno stato di attesa; la selezione viene ritentata al massimo una volta al minuto.
+
+La continuità usa `thread/resume` e un nuovo `turn/start` del motore installato, con lo stesso ID della conversazione e un messaggio di continuazione. Non ricomincia il prompt da zero e non riproduce automaticamente turni completati, annullamenti dell’utente o errori generici. La Home riconosce anche i turni continuati dal servizio. Le richieste di interazione e gli strumenti disponibili soltanto nel client desktop possono richiedere di aprire la conversazione in Codex: vengono segnalati nel banner globale.
+
+Prima dell’invio viene salvato un registro cifrato. Dopo un arresto o una risposta persa, una continuazione dall’esito incerto non viene reinviata automaticamente. Verifica le conversazioni e usa **Ho verificato le conversazioni** per cancellare l’avviso e consentire i cambi successivi; questo pulsante non reinvia prompt. Il recupero dell’account precedente resta disponibile separatamente in caso di cambio fallito.
+
+Il flusso è coperto da test con motore e cambio simulati. La ripresa completa fra due account reali, inclusa la disponibilità degli strumenti del desktop, richiede ancora una verifica nell’installazione reale. Protocollo di riferimento: [Codex App Server](https://learn.chatgpt.com/docs/app-server).
+
 La voce **Impostazioni** nel menu permette di scegliere **Manuale** (predefinito) o **Automatico**. In automatico, gli intervalli iniziali sono **60 secondi per l’account attivo** e **5 minuti per ciascun account inattivo**. Entrambi sono modificabili e vengono salvati nell’archivio cifrato. I pulsanti manuali restano disponibili. L’aggiornamento automatico richiede una finestra dell’hub visibile, si sospende durante login e cambio account, non sovrappone le richieste e aumenta l’attesa dopo un errore. Dopo la chiusura anomala di una finestra, la sua presenza scade entro 20 secondi. Un’operazione già in corso può completarsi dopo che la finestra viene nascosta.
 
 Ogni scheda distingue **Nome profilo**, **Username**, **Nome accesso** ed **Email account**. Nome profilo e username sono letti dal servizio di profilo usato dal client Codex installato (`/backend-api/wham/profiles/me`); il nome accesso proviene dalle credenziali OAuth e può essere diverso. Il servizio di profilo è un’interfaccia interna: se cambia o non risponde, la lettura dei limiti continua a funzionare e i nomi precedenti vengono mantenuti. Un aggiornamento manuale rilegge anche il profilo; in automatico il profilo ha una cache di 15 minuti, separata dagli intervalli dei limiti. Etichetta ed email GamsGo rimangono campi indipendenti modificabili dall’utente.
@@ -49,11 +63,11 @@ Per i database di cronologia, log, stato, memorie e cataloghi viene misurato il 
 
 Verificati sull’installazione locale: individuazione del motore Codex, importazione del primo account, lettura reale dei due limiti e dei banked reset, crittografia Windows, avvio del collegamento e apertura della finestra. La lettura ha lasciato invariato il file di autenticazione usato dall’app.
 
-I test automatici coprono cambio e recupero con un motore simulato. **Il cambio tra due account reali e l’aggiunta con accesso interattivo richiedono la prima prova con l’utente.** L’indicatore “attivo” è ricavato dalle credenziali locali: dopo il primo cambio va confrontato con il profilo visibile in Codex. La verifica visiva automatica della finestra è stata bloccata dal controllo URL di Computer Use.
+I test automatici coprono cambio e recupero con un motore simulato, compilazione dei componenti Windows e terminazione reale di un processo di prova. **Il cambio manuale tra account reali è stato confermato funzionante dall’utente nella versione 0.5.5.** La ripresa automatica completa dei prompt resta da verificare nell’uso reale. L’indicatore “attivo” è ricavato dalle credenziali locali: dopo il primo cambio va confrontato con il profilo visibile in Codex. La verifica visiva automatica della finestra è stata bloccata dal controllo URL di Computer Use.
 
 La versione 0.1.2 avvia il pacchetto Microsoft Store tramite `IApplicationActivationManager`, anziché eseguire direttamente il file in WindowsApps (che su questa installazione restituisce Accesso negato). L’attivazione Windows è stata provata realmente con esito positivo mentre l’app era aperta. Prima di chiudere Codex, il cambio verifica questa attivazione; dopo l’avvio attende finestra e motore, con un limite di tentativi. In caso di errore distingue il punto di guasto e verifica il recupero prima di dichiararlo riuscito.
 
-L’hub riutilizza la cartella Codex esistente e non modifica il programma installato. La continuità di funzioni cloud e collegamenti ad altri servizi può dipendere dall’account scelto. La chiusura di Codex può interrompere attività in corso: cambia account quando sono terminate.
+L’hub riutilizza la cartella Codex esistente e non modifica il programma installato. La continuità di funzioni cloud e collegamenti ad altri servizi può dipendere dall’account scelto. La chiusura interrompe il turno corrente; la continuità tenta di proseguire con un nuovo turno nella stessa conversazione.
 
 ## Installazione e avvio
 
@@ -66,6 +80,16 @@ L’hub è una finestra locale del browser in modalità applicazione. Il process
 La versione 0.1.3 verifica anche l’albero dei processi prima del cambio: se l’hub dipende ancora da Codex, rifiuta di chiuderlo. La chiusura forza soltanto il processo desktop verificato, senza terminare ricorsivamente tutto l’albero. `switch-status.json` conserva la fase raggiunta dal cambio; i file `hub-output.log` e `hub-errors.log` permettono di diagnosticare l’avvio del processo indipendente.
 
 ## Dati locali e recupero
+
+La versione 0.5.1 invia la richiesta Windows di chiusura senza attendere una risposta sincrona dalla finestra Codex, limita le interrogazioni dei processi e concede fino a 60 secondi alle operazioni Windows. I timeout indicano la specifica operazione. Anche una chiusura scaduta attiva il tentativo di riapertura dell’account precedente. All’avvio un vecchio errore nella fase di chiusura viene risolto solo se l’identità precedente e il desktop pronto sono confermati.
+
+La versione 0.5.2 verifica l’account prima del cambio con `account/read` senza rinnovo forzato e con una richiesta remota dei limiti. Sull’installazione locale il rinnovo forzato restituiva un account vuoto anche per sessioni che riuscivano ancora a leggere i limiti. La verifica ordinaria è stata provata con successo sui due account inattivi. I rinnovi necessari effettuati dal motore durante le richieste restano salvati nell’archivio. Errori di rete, timeout e salvataggio non vengono più dichiarati accessi non validi; «Ricollega» è richiesto solo per errori di autenticazione riconosciuti. Un errore prima del cambio viene segnalato come cambio non avviato e non propone un recupero inesistente.
+
+La versione 0.5.3 separa la lettura dei turni necessaria al cambio dalla Home: legge soltanto gli ID e gli stati nei tre cataloghi locali, senza scansione di progetti, messaggi e file di sessione. I sottoagenti e i vecchi turni aperti vengono esclusi. Ogni lettura usa un worker dedicato, con scadenza di 30 secondi e richieste simultanee condivise; dopo un errore il tentativo successivo usa un worker nuovo. Le opzioni di avvio del processo principale non vengono ereditate dai lettori. Un catalogo non accessibile rimane un errore esplicito, anziché essere interpretato come assenza di attività.
+
+La versione 0.5.4 corregge una riga di diagnostica PowerShell inserita nel blocco C# di chiusura. I test Windows compilano entrambi i blocchi C# di produzione ed eseguono `StopApp` con un percorso senza processi associati. Il recupero di una chiusura fallita elimina un checkpoint mai inviato soltanto quando una lettura aggiornata conferma che le sue conversazioni sono già attive o terminate normalmente; gli invii dall’esito incerto vengono conservati.
+
+La versione 0.5.5 attende l’uscita effettiva dei processi anziché controllare una sola volta dopo 700 ms. Dopo la richiesta di chiusura aggiorna l’elenco dei processi desktop, gestisce eventuali PID sostitutivi, riconferma il percorso prima della terminazione forzata e richiede un secondo senza processi prima di proseguire. La fase forzata ha una scadenza di 18 secondi. Non termina ricorsivamente l’albero dei processi. I test includono PID sostitutivi, processi che resistono alla chiusura e la terminazione reale di un processo di prova.
 
 Archivio in `%LOCALAPPDATA%\MultiCodex`:
 

@@ -8,6 +8,8 @@ import { Vault, atomicWrite } from './vault.mjs';
 import { Hub } from './hub.mjs';
 import { ProjectService } from './project-service.mjs';
 import { DashboardService } from './dashboard-service.mjs';
+import { Continuity } from './continuity.mjs';
+import { ActivityService } from './activity-service.mjs';
 import { loadEndpoint, listenLocal, saveEndpoint } from './endpoint.mjs';
 
 const root = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'MultiCodex');
@@ -15,7 +17,9 @@ const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const vault = new Vault(root);
 const projects = new ProjectService(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
 const dashboard = new DashboardService(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
-const hub = new Hub(vault, { requireIndependentHost: true, independentHost: process.env.MULTICODEX_HOST === 'windows-task' });
+const hub = new Hub(vault, { desktopHome: dashboard.home, requireIndependentHost: true, independentHost: process.env.MULTICODEX_HOST === 'windows-task' });
+const activity = new ActivityService(dashboard.home);
+hub.continuity = new Continuity(hub, () => activity.readFresh());
 let token;
 const lockPath = path.join(root, 'server.lock');
 const runtimePath = path.join(root, 'runtime.json');
@@ -68,9 +72,13 @@ async function request(req, res) {
   try {
     if (url.pathname.startsWith('/api/')) {
       if (!authorized(req)) return json(res, 401, { error: 'Sessione hub non valida. Riapri MultiCodex dal desktop.' });
-      if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { app: 'MultiCodex', pid: process.pid, version: '0.4.0', host: process.env.MULTICODEX_HOST || 'direct' });
+      if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { app: 'MultiCodex', pid: process.pid, version: '0.5.5', host: process.env.MULTICODEX_HOST || 'direct' });
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res, 200, hub.snapshot());
-      if (req.method === 'GET' && url.pathname === '/api/dashboard') return json(res, 200, dashboard.snapshot());
+      if (req.method === 'GET' && url.pathname === '/api/dashboard') {
+        const activity = dashboard.snapshot();
+        const owned = activity.uncertain.filter(t => hub.continuity.owned.get(t.threadId)?.id === t.id);
+        return json(res, 200, { ...activity, active: [...activity.active, ...owned.map(t => ({ ...t, status: 'inProgress' }))], uncertain: activity.uncertain.filter(t => !owned.includes(t)) });
+      }
       if (req.method === 'GET' && url.pathname === '/api/projects') return json(res, 200, projects.status === 'idle' ? projects.scan() : projects.snapshot());
       const projectRoute = url.pathname.match(/^\/api\/projects\/([a-f0-9]{24})(?:\/conversations\/([a-zA-Z0-9_-]+))?$/);
       if (req.method === 'GET' && projectRoute) return json(res, 200, projectRoute[2] ? await projects.conversation(projectRoute[1], projectRoute[2], url.searchParams.get('before')) : projects.detail(projectRoute[1]));
@@ -81,6 +89,12 @@ async function request(req, res) {
       // Avoid queued duplicate switches and actions that would race a pending restart.
       if (hub.switchJob?.status === 'running') return json(res, 409, { error: 'Attendi il completamento del cambio account.' });
       if (url.pathname === '/api/settings') return json(res, 200, await hub.saveSettings(input));
+      if (url.pathname === '/api/continuity/acknowledge') return json(res, 200, await hub.exclusive('Conferma verifica conversazioni', async () => {
+        delete vault.data.continuity;
+        hub.continuityStatus = null;
+        await vault.save();
+        return { ok: true };
+      }));
       if (url.pathname === '/api/refresh') {
         if (hub.busy) return json(res, 409, { error: 'Un’operazione è già in corso.' });
         hub.refresh(input.id || null).catch(error => { hub.notice = error.message; });
@@ -112,8 +126,11 @@ async function request(req, res) {
 async function stop() {
   clearInterval(syncTimer);
   clearInterval(autoTimer);
+  clearInterval(continuityTimer);
   await projects.close();
   await dashboard.close();
+  await activity.close();
+  await hub.continuity.close();
   if (hub.login?.status === 'pending') await hub.cancelLogin().catch(() => {});
   server?.close();
   await lockHandle?.close();
@@ -121,7 +138,7 @@ async function stop() {
   await fs.unlink(runtimePath).catch(() => {});
   process.exit(0);
 }
-let syncTimer, autoTimer;
+let syncTimer, autoTimer, continuityTimer;
 try {
   await acquireLock();
   await hub.init();
@@ -139,6 +156,7 @@ try {
     if (!hub.busy && hub.login?.status !== 'pending' && hub.switchJob?.status !== 'running') hub.exclusive('Sincronizzazione accesso attuale', () => hub.syncCurrent(false)).catch(() => {});
   }, 30000);
   autoTimer = setInterval(() => { hub.autoTick().catch(() => { hub.notice = 'Aggiornamento automatico non riuscito. I dati precedenti sono conservati.'; }); }, 1000);
+  continuityTimer = setInterval(() => { hub.continuity.tick().catch(() => {}); }, 2000);
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 } catch (error) {

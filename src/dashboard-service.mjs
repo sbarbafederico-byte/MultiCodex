@@ -4,7 +4,7 @@ export class DashboardService {
   snapshot() {
     if (!this.loading && Date.now() - this.lastRead >= 1500) {
       if (!this.worker) {
-        const worker = this.worker = new Worker(new URL('./dashboard-worker.mjs', import.meta.url), { workerData: { home: this.home } });
+        const worker = this.worker = new Worker(new URL('./dashboard-worker.mjs', import.meta.url), { workerData: { home: this.home }, execArgv: [] });
         worker.on('message', value => { this.value = value; this.lastRead = Date.now(); this.loading = false; });
         worker.on('error', () => { this.loading = false; this.lastRead = Date.now(); this.value.error = 'Lettura Home interrotta. Nuovo tentativo automatico.'; });
         worker.on('exit', () => { if (this.worker === worker) this.worker = null; this.loading = false; });

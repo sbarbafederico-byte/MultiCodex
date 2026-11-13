@@ -1,9 +1,11 @@
 param([Parameter(Mandatory=$true)][ValidateSet('Protect','Unprotect','Discover','HostStatus','OpenLogin','StopApp','LaunchApp','Restrict')][string]$Action)
 $ErrorActionPreference = 'Stop'
+[Console]::Error.WriteLine('MULTICODEX_STAGE=input')
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 try {
     $taskInput = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    [Console]::Error.WriteLine('MULTICODEX_STAGE=execute')
     switch ($Action) {
         'Protect' {
             Add-Type -AssemblyName System.Security
@@ -25,11 +27,12 @@ try {
             $taskSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
             $taskRule = New-Object Security.AccessControl.FileSystemAccessRule($taskSid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
             $taskAcl.AddAccessRule($taskRule)
+            [Console]::Error.WriteLine('MULTICODEX_STAGE=permissions')
             $taskInfo.SetAccessControl($taskAcl)
             '{"ok":true}'
         }
         'Discover' {
-            $taskApp = Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe' OR Name='Codex.exe'" | Where-Object {
+            $taskApp = Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe' OR Name='Codex.exe'" -OperationTimeoutSec 8 | Where-Object {
                 $_.ExecutablePath -match '\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\(ChatGPT|Codex)\.exe$' -and $_.CommandLine -notmatch ' --type='
             } | Select-Object -First 1
             $taskAppPath = if ($taskApp) { $taskApp.ExecutablePath } else { $null }
@@ -43,14 +46,14 @@ try {
                     if ($taskAppPath) { break }
                 }
             }
-            $taskCli = Get-CimInstance Win32_Process -Filter "Name='codex.exe'" | Where-Object { $_.CommandLine -match '\bapp-server\b' -and $_.ExecutablePath -match '\\OpenAI\\Codex\\bin\\' } | Select-Object -First 1
+            $taskCli = Get-CimInstance Win32_Process -Filter "Name='codex.exe'" -OperationTimeoutSec 8 | Where-Object { $_.CommandLine -match '\bapp-server\b' -and $_.ExecutablePath -match '\\OpenAI\\Codex\\bin\\' } | Select-Object -First 1
             $taskCliPath = if ($taskCli) { $taskCli.ExecutablePath } elseif ($taskAppPath) { Join-Path (Split-Path $taskAppPath) 'resources\codex.exe' } else { $null }
-            $taskAppAgent = if ($taskApp) { Get-CimInstance Win32_Process -Filter "Name='codex.exe'" | Where-Object { $_.ParentProcessId -eq $taskApp.ProcessId -and $_.CommandLine -match '\bapp-server\b' } | Select-Object -First 1 } else { $null }
+            $taskAppAgent = if ($taskApp) { Get-CimInstance Win32_Process -Filter "Name='codex.exe'" -OperationTimeoutSec 8 | Where-Object { $_.ParentProcessId -eq $taskApp.ProcessId -and $_.CommandLine -match '\bapp-server\b' } | Select-Object -First 1 } else { $null }
             $taskWindowReady = if ($taskApp) { [bool](Get-Process -Id $taskApp.ProcessId -ErrorAction SilentlyContinue).MainWindowHandle } else { $false }
             @{ appPath=$taskAppPath; cliPath=$taskCliPath; pid=$(if ($taskApp) { $taskApp.ProcessId } else { $null }); appRunning=[bool]$taskApp; agentReady=[bool]$taskAppAgent; windowReady=$taskWindowReady } | ConvertTo-Json -Compress
         }
         'HostStatus' {
-            $taskProcesses = @(Get-CimInstance Win32_Process)
+            $taskProcesses = @(Get-CimInstance Win32_Process -OperationTimeoutSec 8)
             $taskCurrentPid = [int]$taskInput.pid
             $taskChain = @()
             $taskSeen = @{}
@@ -88,27 +91,21 @@ try {
         'StopApp' {
             $taskExpected = [IO.Path]::GetFullPath($taskInput.path)
             if ($taskExpected -notmatch '\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\(ChatGPT|Codex)\.exe$') { throw 'Percorso app non valido.' }
-            $taskApps = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $taskExpected -and $_.CommandLine -notmatch ' --type=' })
-            foreach ($taskApp in $taskApps) {
-                $taskProcess = Get-Process -Id $taskApp.ProcessId -ErrorAction SilentlyContinue
-                if ($taskProcess) { $null = $taskProcess.CloseMainWindow() }
-            }
-            $taskDeadline = [DateTime]::UtcNow.AddSeconds(6)
-            do {
-                $taskRemaining = @($taskApps | Where-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
-                if ($taskRemaining.Count -eq 0) { break }
-                Start-Sleep -Milliseconds 250
-            } while ([DateTime]::UtcNow -lt $taskDeadline)
-            foreach ($taskApp in $taskRemaining) {
-                $taskCheck = Get-CimInstance Win32_Process -Filter "ProcessId=$($taskApp.ProcessId)"
-                if ($taskCheck -and $taskCheck.ExecutablePath -eq $taskExpected) {
-                    # Stop only the verified desktop process. Never terminate its whole tree:
-                    # it can include the caller that must reopen the application.
-                    Stop-Process -Id $taskApp.ProcessId -ErrorAction Stop
-                }
-            }
-            Start-Sleep -Milliseconds 700
-            if (Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $taskExpected -and $_.CommandLine -notmatch ' --type=' }) { throw 'Codex risulta ancora aperto.' }
+            # CloseMainWindow sends a synchronous WM_CLOSE and can hang when Electron
+            # is busy or unresponsive. Post the request and retain our own deadline.
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace MultiCodex {
+    public static class WindowCloser {
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    }
+}
+'@
+            . (Join-Path $PSScriptRoot 'desktop-process.ps1')
+            Stop-MultiCodexDesktop -ExpectedPath $taskExpected
             '{"ok":true}'
         }
         'LaunchApp' {
@@ -156,6 +153,7 @@ namespace MultiCodex {
             @{ok=$true;pid=$taskActivatedPid;method='windows-package-activation';appId=$taskAumid} | ConvertTo-Json -Compress
         }
     }
+    [Console]::Error.WriteLine('MULTICODEX_STAGE=complete')
 } catch {
     [Console]::Error.WriteLine('Operazione Windows non riuscita: ' + $_.Exception.Message)
     exit 1

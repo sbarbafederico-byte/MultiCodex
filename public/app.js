@@ -9,7 +9,7 @@ if (fragment.has('token')) {
 }
 const token = sessionStorage.getItem('multicodex-token') || '';
 let state = null, editingId = null, acting = false, lastLoginId = null, lastLoginStatus = null, connected = false, editingDefaultLabel = null;
-let settingsDirty = false;
+let settingsDirty = false, accountOrder = [];
 const clientId = sessionStorage.getItem('multicodex-client') || crypto.randomUUID();
 sessionStorage.setItem('multicodex-client', clientId);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -107,10 +107,11 @@ function render() {
   $('#refresh-all span').textContent = settings.refreshMode === 'automatic' ? 'Aggiorna ora' : 'Aggiorna';
   $('#poll-note').textContent = settings.refreshMode === 'automatic' ? `Automatico · attivo ${settings.activeIntervalSeconds}s · altri ${settings.inactiveIntervalSeconds / 60} min · solo con finestra visibile` : 'Modalità manuale · usa i pulsanti Aggiorna';
   if (!settingsDirty) applySettingsForm(settings);
+  banner($('#continuity-banner'), state.continuity?.message, state.continuity?.status, state.continuity?.status === 'error' ? { label: 'Ho verificato le conversazioni', run: () => act(() => api('continuity/acknowledge', {})) } : null);
   const flow = state.login;
   banner($('#flow-banner'), flow?.message, flow?.status, flow?.status === 'pending' ? { label: 'Annulla accesso', run: () => act(() => api('login/cancel', {})) } : null);
   const job = state.switchJob;
-  banner($('#switch-banner'), job?.message || state.startupWarning, job?.status, job?.status === 'interrupted' || job?.status === 'error' ? { label: 'Ripristina account precedente', run: () => act(() => api('recover', {})) } : null);
+  banner($('#switch-banner'), job?.message || state.startupWarning, job?.status, job?.status === 'interrupted' || (job?.status === 'error' && job.recoveryAvailable !== false) ? { label: 'Ripristina account precedente', run: () => act(() => api('recover', {})) } : null);
   if (flow?.status === 'success' && (lastLoginId !== flow.id || lastLoginStatus !== 'success')) toast(flow.message);
   lastLoginId = flow?.id; lastLoginStatus = flow?.status;
 }
@@ -119,7 +120,28 @@ function applySettingsForm(settings) {
   $('#active-interval').value = settings.activeIntervalSeconds;
   $('#inactive-interval').value = settings.inactiveIntervalSeconds / 60;
   $('#refresh-intervals').disabled = settings.refreshMode !== 'automatic';
+  document.querySelector(`input[name="switch-mode"][value="${settings.switchMode || 'manual'}"]`).checked = true;
+  $('#switch-strategy').value = settings.switchStrategy || 'fiveHour';
+  const ids = (state?.accounts || []).map(a => a.id);
+  accountOrder = [...(settings.accountOrder || []).filter(id => ids.includes(id)), ...ids.filter(id => !(settings.accountOrder || []).includes(id))];
+  updateSwitchOptions();
 }
+function updateSwitchOptions() {
+  $('#switch-options').disabled = document.querySelector('input[name="switch-mode"]:checked').value !== 'automatic';
+  if (!$('#switch-options').disabled) $('#refresh-intervals').disabled = false;
+  $('#custom-account-order').hidden = $('#switch-strategy').value !== 'custom';
+  $('#account-order').innerHTML = accountOrder.map((id, index) => {
+    const a = state?.accounts.find(a => a.id === id);
+    return `<li><span>${escape(a?.label || a?.profileDisplayName || a?.accountEmail || 'Account rimosso')}</span><button type="button" data-order-index="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="Sposta su">↑</button><button type="button" data-order-index="${index}" data-direction="1" ${index === accountOrder.length - 1 ? 'disabled' : ''} aria-label="Sposta giù">↓</button></li>`;
+  }).join('');
+}
+$('#account-order').addEventListener('click', event => {
+  const button = event.target.closest('[data-order-index]');
+  if (!button || button.disabled) return;
+  const from = Number(button.dataset.orderIndex), to = from + Number(button.dataset.direction);
+  [accountOrder[from], accountOrder[to]] = [accountOrder[to], accountOrder[from]];
+  settingsDirty = true; $('#settings-save-state').textContent = 'Modifiche da salvare'; updateSwitchOptions();
+});
 function navigate(page) {
   if (!['home', 'accounts', 'projects', 'settings'].includes(page)) page = 'home';
   for (const name of ['home', 'accounts', 'projects', 'settings']) {
@@ -178,6 +200,9 @@ $('#settings-form').addEventListener('input', () => {
   settingsDirty = true;
   $('#settings-save-state').textContent = 'Modifiche da salvare';
   $('#refresh-intervals').disabled = document.querySelector('input[name="refresh-mode"]:checked').value !== 'automatic';
+  // Keep both intervals configurable for the independent continuity monitor.
+  if (document.querySelector('input[name="switch-mode"]:checked').value === 'automatic') $('#refresh-intervals').disabled = false;
+  updateSwitchOptions();
 });
 $('#settings-defaults').addEventListener('click', () => {
   applySettingsForm({ refreshMode: 'manual', activeIntervalSeconds: 60, inactiveIntervalSeconds: 300 });
@@ -195,6 +220,9 @@ $('#settings-form').addEventListener('submit', async event => {
       refreshMode: document.querySelector('input[name="refresh-mode"]:checked').value,
       activeIntervalSeconds: Number($('#active-interval').value),
       inactiveIntervalSeconds: Number($('#inactive-interval').value) * 60,
+      switchMode: document.querySelector('input[name="switch-mode"]:checked').value,
+      switchStrategy: $('#switch-strategy').value,
+      accountOrder,
     };
     await api('settings', settings);
     settingsDirty = false;

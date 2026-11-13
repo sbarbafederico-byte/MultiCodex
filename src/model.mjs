@@ -60,7 +60,7 @@ export function normalizeLimits(result) {
 
 export function classifyError(error) {
   const message = (error.upstream || error.message || '').toLowerCase();
-  if (/refresh|401|unauthori|token.*expired|sign.?in|authenticat|not logged/.test(message)) {
+  if (/\b401\b|unauthori|token.*(?:expired|revoked|reused)|refresh_token_(?:expired|reused|invalid)|invalid_grant|sign.?in|authentication (?:failed|required)|not logged/.test(message)) {
     return { status: 'reauth', message: 'Accesso da rinnovare. Usa «Ricollega» per accedere di nuovo.' };
   }
   if (/429|rate.?limit/.test(message)) return { status: 'error', message: 'Troppe richieste. Attendi e riprova.' };

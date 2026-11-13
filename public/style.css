@@ -16,3 +16,4 @@
 .home-prompt{max-height:230px;overflow:auto;overscroll-behavior:contain}
 
 .home-account-quotas{margin-top:22px}.home-account-quotas .quota{margin-bottom:18px}.home-account-quotas .quota:last-child{margin-bottom:0}.home-account-quotas .quota-reset{display:none}.home-account-quotas .quota-value small{display:inline;font-size:10px;font-weight:400;margin:0 0 0 3px;color:#959aaa}
+#switch-strategy{max-width:100%;padding:12px;border:1px solid var(--line);border-radius:7px;background:white;color:inherit;margin-top:8px}.account-order{padding-left:24px}.account-order li{padding:10px 0;border-bottom:1px solid var(--line)}.account-order li span{display:inline-block;width:calc(100% - 90px);overflow-wrap:anywhere;font-size:13px}.account-order button{margin-left:8px;padding:5px 10px;border:1px solid var(--line);border-radius:5px;background:white;cursor:pointer}.account-order button:disabled{opacity:.35;cursor:default}

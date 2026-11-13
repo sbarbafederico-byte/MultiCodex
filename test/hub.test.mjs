@@ -44,6 +44,10 @@ async function fixture(t) {
         }
         return { account: { type: 'chatgpt', email: identityFromAuth(a).accountEmail } };
       }
+      if (method === 'account/rateLimits/read') {
+        if (a.tokens.refresh_token) { a.tokens.refresh_token += '-rotated'; await fs.writeFile(file, JSON.stringify(a)); }
+        return {};
+      }
       return {};
     }
     async close() { this.closed = true; }
@@ -149,6 +153,42 @@ test('switch saves the current session and installs refreshed target credentials
   assert.equal(vault.data.switchJournal, undefined);
 });
 
+test('switch preflight uses normal identity read plus a remote quota check, without forced refresh', async t => {
+  const { hub } = await fixture(t);
+  const targetAuth = auth('two');
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  const requests = [];
+  hub.withAccount = async (_, fn) => fn({ request: async (method, params) => {
+    requests.push({ method, params });
+    if (method === 'account/read') return { account: params.refreshToken ? null : { type: 'chatgpt' } };
+    return { accountId: target.accountId };
+  } });
+  await hub.validateSwitchTarget(target);
+  assert.deepEqual(requests, [{ method: 'account/read', params: { refreshToken: false } }, { method: 'account/rateLimits/read', params: undefined }]);
+});
+
+test('network and timeout failures during preflight never ask the user to reconnect', async t => {
+  const { hub, calls } = await fixture(t);
+  const targetAuth = auth('two');
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  target.status = 'ok';
+  for (const message of ['refresh request failed: network unreachable', 'Codex non ha risposto in tempo. Riprova.']) {
+    hub.withAccount = async () => { const error = new Error(message); error.upstream = message; throw error; };
+    await assert.rejects(hub.validateSwitchTarget(target), error => !error.message.includes('Ricollega'));
+    assert.equal(target.status, 'ok');
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('confirmed unauthorized access marks only the selected account as needing login', async t => {
+  const { hub } = await fixture(t);
+  const targetAuth = auth('two');
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  hub.withAccount = async () => { const error = new Error('RPC failure'); error.upstream = '401 Unauthorized'; throw error; };
+  await assert.rejects(hub.validateSwitchTarget(target), /Ricollega/);
+  assert.equal(target.status, 'reauth');
+});
+
 test('failed relaunch restores the previous account and retains encrypted recovery data', async t => {
   const { hub, calls, vault } = await fixture(t);
   const first = auth('one'), second = auth('two');
@@ -243,9 +283,56 @@ test('failed target activation verifies a successful recovery before reporting i
   assert.equal(vault.data.switchJournal.failureStage, 'riapertura tramite Windows');
 });
 
+test('a close timeout still reopens and verifies the previous desktop before reporting failure', async t => {
+  const { hub, calls } = await fixture(t);
+  const current = auth('one'), targetAuth = auth('two');
+  await fs.writeFile(hub.authPath, JSON.stringify(current));
+  hub.upsert(current, identityFromAuth(current));
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  hub.windows = async action => {
+    calls.push({ action });
+    if (action === 'StopApp') throw new Error('Tempo scaduto durante chiusura di Codex.');
+  };
+  await assert.rejects(hub.performSwitch(target.id), /riaperto con l’account precedente/);
+  assert.deepEqual(calls.map(c => c.action), ['LaunchApp', 'StopApp', 'LaunchApp']);
+  assert.equal(hub.vault.data.switchJournal.previousAppRestored, true);
+  assert.deepEqual(JSON.parse(await fs.readFile(hub.authPath, 'utf8')), current);
+});
+
+test('a stale close failure is cleared only when the previous identity and a ready desktop are verified', async t => {
+  const { hub } = await fixture(t);
+  const previous = auth('one');
+  hub.vault.data.switchJournal = { failureStage: 'chiusura', previousAuth: previous };
+  hub.activeKey = identityFromAuth(previous).key;
+  hub.runtime.agentReady = false;
+  assert.equal(await hub.reconcileInterruptedClose(), false);
+  hub.runtime.agentReady = true;
+  hub.activeKey = 'different-account';
+  assert.equal(await hub.reconcileInterruptedClose(), false);
+  hub.activeKey = identityFromAuth(previous).key;
+  assert.equal(await hub.reconcileInterruptedClose(), true);
+  assert.equal(hub.vault.data.switchJournal, undefined);
+});
+
 test('recovery refuses to delete outside the dedicated work directory', async t => {
   const { vault, root } = await fixture(t);
   await assert.rejects(vault.removeWork(root), /Cartella temporanea non valida/);
+});
+
+test('a failed close does not leave an unused continuation checkpoint blocking an already running chat', async t => {
+  const { hub } = await fixture(t);
+  const previous = auth('one');
+  hub.activeKey = identityFromAuth(previous).key;
+  const journal = { failureStage: 'chiusura', previousAuth: previous };
+  hub.vault.data.switchJournal = journal;
+  hub.vault.data.continuity = { tasks: [{ threadId: 'chat', originalTurnId: 'old-turn', state: 'pending' }] };
+  hub.continuity = { readActivity: async () => ({ active: [{ threadId: 'chat', id: 'new-turn' }], recent: [], updatedAt: new Date().toISOString() }) };
+  assert.equal(await hub.reconcileInterruptedClose(), true);
+  assert.equal(hub.vault.data.continuity, undefined);
+  hub.vault.data.switchJournal = journal;
+  hub.vault.data.continuity = { tasks: [{ threadId: 'chat', state: 'submitting' }] };
+  await hub.reconcileInterruptedClose();
+  assert.equal(hub.vault.data.continuity.tasks[0].state, 'submitting');
 });
 
 test('after a crash, rotated inactive credentials are recovered before cleanup', async t => {
@@ -264,7 +351,7 @@ function rootOf(vault) { return vault.root; }
 
 test('manual settings are the default and custom intervals persist independently of account data', async t => {
   const { hub, vault } = await fixture(t);
-  assert.deepEqual(hub.settings(), { refreshMode: 'manual', activeIntervalSeconds: 60, inactiveIntervalSeconds: 300 });
+  assert.deepEqual(hub.settings(), { refreshMode: 'manual', activeIntervalSeconds: 60, inactiveIntervalSeconds: 300, switchMode: 'manual', switchStrategy: 'fiveHour', accountOrder: [] });
   const a = auth('one'); hub.upsert(a, identityFromAuth(a), { personalEmail: 'personal@example.com' });
   await hub.saveSettings({ refreshMode: 'automatic', activeIntervalSeconds: 90, inactiveIntervalSeconds: 600 });
   const reloaded = new Hub(vault);
@@ -273,6 +360,27 @@ test('manual settings are the default and custom intervals persist independently
   assert.equal(vault.data.accounts[0].personalEmail, 'personal@example.com');
   await assert.rejects(hub.saveSettings({ refreshMode: 'automatic', activeIntervalSeconds: 0, inactiveIntervalSeconds: 300 }));
   assert.equal(hub.settings().activeIntervalSeconds, 90);
+});
+
+test('continuity captures only after switch preflight and can cancel before closing the desktop', async t => {
+  const { hub, calls } = await fixture(t);
+  const previous = auth('one');
+  await fs.writeFile(hub.authPath, JSON.stringify(previous));
+  hub.upsert(previous, identityFromAuth(previous));
+  const targetAuth = auth('two');
+  const target = hub.upsert(targetAuth, identityFromAuth(targetAuth));
+  let captured = false;
+  const result = await hub.performSwitch(target.id, { beforeStop: async () => {
+    captured = true;
+    assert.ok(calls.some(c => c.action === 'LaunchApp'));
+    assert.ok(!calls.some(c => c.action === 'StopApp'));
+    return false;
+  } });
+  assert.equal(result, false);
+  assert.equal(captured, true);
+  assert.ok(!calls.some(c => c.action === 'StopApp'));
+  assert.equal(hub.vault.data.switchJournal, undefined);
+  assert.deepEqual(JSON.parse(await fs.readFile(hub.authPath, 'utf8')), previous);
 });
 
 test('automatic refresh uses the active and inactive intervals separately', async t => {

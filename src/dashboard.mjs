@@ -94,6 +94,7 @@ export class DashboardReader {
         let budget = 48000;
         for (const m of replies) { m.text = m.text.slice(0, Math.min(12000, budget)); budget -= m.text.length; }
         const value = { id: turn.turn_id, threadId: thread.id, title: thread.title, project: thread.project, prompt, startedAt: time(turn.started_at), completedAt: time(turn.completed_at), durationMs: turn.duration_ms ?? null, status: turn.status, messages: replies.filter(m => m.text), usage: this.sampler.forTurn(thread.rolloutPath, turn.turn_id) };
+        value.limitReached = /usageLimitExceeded|rateLimitExceeded/.test(JSON.stringify(turn));
         if (!isPending) recent.push(value);
         else if (live?.has(turn.thread_id) && pending.find(t => t.thread_id === turn.thread_id)?.turn_id === turn.turn_id) active.push(value);
         else { value.status = 'unconfirmed'; uncertain.push(value); }

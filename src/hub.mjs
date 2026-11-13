@@ -49,12 +49,37 @@ export class Hub {
     this.runtime = await this.discover();
     if (!this.runtime.cliPath) throw new Error('Motore Codex non trovato. Apri Codex e riavvia MultiCodex.');
     await this.syncCurrent(true);
+    await this.reconcileInterruptedClose();
     if (this.vault.data.switchJournal) {
       const journal = this.vault.data.switchJournal;
       this.startupWarning = 'Il precedente cambio è stato interrotto. Controlla l’account attivo in Codex; il salvataggio di recupero è disponibile.';
       // Never guess that the target was activated after an interrupted transaction.
       this.switchJob = { status: 'interrupted', message: this.startupWarning, targetId: journal.targetId };
     }
+  }
+  async reconcileInterruptedClose() {
+    const journal = this.vault.data.switchJournal;
+    if (journal?.failureStage !== 'chiusura' || !journal.previousAuth || !this.runtime?.appRunning || this.runtime.agentReady === false || this.runtime.windowReady === false) return false;
+    let previousKey;
+    try { previousKey = identityFromAuth(journal.previousAuth).key; } catch { return false; }
+    if (this.activeKey !== previousKey) return false;
+    const tasks = this.vault.data.continuity?.tasks;
+    if (tasks?.length && tasks.every(t => t.state === 'pending') && this.continuity) {
+      try {
+        const activity = await this.continuity.readActivity();
+        // Nothing was submitted. Discard the old checkpoint only if a fresh
+        // read confirms those chats are already running or finished normally.
+        if (!activity.error && Date.now() - Date.parse(activity.updatedAt) < 10000 && tasks.every(t =>
+          activity.active.some(a => a.threadId === t.threadId) ||
+          activity.recent.some(a => a.id === t.originalTurnId && ['completed', 'cancelled'].includes(a.status)))) {
+          delete this.vault.data.continuity;
+        }
+      } catch { /* Keep an unverified checkpoint for manual recovery. */ }
+    }
+    delete this.vault.data.switchJournal;
+    await this.vault.save();
+    this.notice = 'Il cambio precedente si era fermato durante la chiusura. Codex è aperto con l’account precedente; puoi riprovare il cambio.';
+    return true;
   }
   async recoverWork() {
     const root = path.join(this.vault.root, 'work');
@@ -112,10 +137,11 @@ export class Hub {
   }
   snapshot() {
     return {
-      version: '0.4.0', busy: this.busy, notice: this.notice,
+      version: '0.5.5', busy: this.busy, notice: this.notice,
       settings: this.settings(), automaticRefreshActive: this.settings().refreshMode === 'automatic' && this.presence.visible(),
       login: this.publicLogin(), switchJob: this.switchJob,
       startupWarning: this.startupWarning,
+      continuity: this.continuityStatus || (this.vault.data.continuity?.tasks.some(t => ['pending', 'submitting', 'error'].includes(t.state)) ? { status: 'error', message: 'Ripresa precedente da verificare. Apri la conversazione in Codex per continuare.' } : null),
       accounts: this.vault.data.accounts.map(({ auth, key, accountId, browserId, ...a }) => ({
         ...a, active: key === this.activeKey,
       })),
@@ -359,8 +385,15 @@ export class Hub {
     this.switchJob = { targetId: id, status: 'running', message: 'Verifica dell’account selezionato…' };
     // Return immediately; the hub must survive closing the Codex window hosting this chat.
     setTimeout(() => {
-      this.exclusive('Cambio account', () => this.performSwitch(id)).catch(error => {
-        this.switchJob = { targetId: id, status: 'error', message: error.message || 'Cambio account non riuscito.' };
+      this.exclusive('Cambio account', async () => {
+        await this.syncCurrent(false);
+        const changing = this.vault.find(id).key !== this.activeKey;
+        await this.performSwitch(id, { beforeStop: this.continuity && changing ? async () => this.continuity.prepare(await this.continuity.capture()) : null });
+        if (this.continuity && changing) await this.continuity.resume();
+      }).catch(error => {
+        const recoveryAvailable = !!this.vault.data.switchJournal?.previousAuth;
+        this.switchJob = { targetId: id, status: 'error', recoveryAvailable, message: error.message || 'Cambio account non riuscito.' };
+        if (this.continuity) this.continuityStatus = { status: 'error', message: recoveryAvailable || this.vault.data.continuity?.tasks.some(t => ['pending', 'submitting', 'error'].includes(t.state)) ? 'Cambio o ripresa interrotti. Controlla lo stato del cambio e le conversazioni in Codex.' : 'Il cambio non è stato avviato. Codex è ancora con l’account precedente. ' + this.switchJob.message };
       });
     }, 200);
     return { ok: true };
@@ -386,7 +419,31 @@ export class Hub {
   async recordSwitchStage(stage, targetId) {
     await atomicWrite(path.join(this.vault.root, 'switch-status.json'), JSON.stringify({ stage, targetId, pid: process.pid, at: new Date().toISOString() }));
   }
-  async performSwitch(id) {
+  async validateSwitchTarget(target) {
+    let stage = 'lettura account';
+    try {
+      await this.withAccount(target, async rpc => {
+        // A forced refresh can clear otherwise usable auth in the installed engine.
+        // Read the identity and prove access with a remote request; the engine
+        // renews inactive credentials when necessary and withAccount persists them.
+        const result = await rpc.request('account/read', { refreshToken: false });
+        if (result.account?.type !== 'chatgpt') throw new Error('Not logged in');
+        stage = 'verifica limiti';
+        const limits = await rpc.request('account/rateLimits/read');
+        if (limits.accountId && limits.accountId !== target.accountId) throw new Error('Identità account diversa durante la verifica.');
+      });
+    } catch (error) {
+      const failure = classifyError(error);
+      if (failure.status === 'reauth') {
+        target.status = 'reauth'; target.error = failure.message;
+        await this.vault.save();
+        throw new Error('Accesso scaduto o revocato per questo account. Premi «Ricollega» e riprova.');
+      }
+      if (error.windowsAction || /Salvataggio della sessione/.test(error.message)) throw error;
+      throw new Error(`Verifica dell’account non completata durante ${stage}. ${/tempo|timeout/i.test(error.message) ? 'Il motore Codex non ha risposto in tempo.' : /429|rate.?limit/i.test(error.upstream || '') ? 'Il servizio ha limitato temporaneamente le richieste.' : 'Controlla la connessione e riprova.'} Codex non è stato chiuso.`);
+    }
+  }
+  async performSwitch(id, { beforeStop = null } = {}) {
     this.switchJob = { targetId: id, status: 'running', message: 'Verifica dell’account selezionato…' };
     const target = this.vault.find(id);
     await this.syncCurrent(true);
@@ -399,16 +456,16 @@ export class Hub {
       return;
     }
     await this.verifyIndependentHost();
-    // Validate/refresh the inactive account before touching the desktop.
-    await this.withAccount(target, async rpc => {
-      const result = await rpc.request('account/read', { refreshToken: true });
-      if (!result.account || result.account.type !== 'chatgpt') throw new Error('Ricollega l’account prima di selezionarlo.');
-    }).catch(() => { throw new Error('Accesso dell’account non valido. Premi «Ricollega» e riprova.'); });
+    await this.validateSwitchTarget(target);
     // Verify the real Windows activation path while the current app can remain open.
     this.switchJob.message = 'Verifica dell’avvio di Codex tramite Windows…';
     await this.windows('LaunchApp', { path: this.runtime.appPath }).catch(error => {
       throw new Error('Codex non è stato chiuso: la verifica di avvio Windows è fallita. ' + error.message);
     });
+    if (beforeStop && await beforeStop() === false) {
+      this.switchJob = { targetId: id, status: 'success', message: 'Le attività sono già terminate. Cambio automatico annullato.' };
+      return false;
+    }
     const previous = await this.currentAuth();
     this.vault.data.switchJournal = { previousAuth: previous, targetId: id, startedAt: new Date().toISOString() };
     await this.vault.save();
@@ -418,8 +475,10 @@ export class Hub {
     try {
       this.switchJob.message = 'Chiusura di Codex e salvataggio della sessione attuale…';
       await this.recordSwitchStage('before-close', id);
-      await this.windows('StopApp', { path: this.runtime.appPath });
+      // Even a timed-out close may have already stopped the desktop. Recovery
+      // must reopen it before reporting failure, without assuming no side effect.
       stopped = true;
+      await this.windows('StopApp', { path: this.runtime.appPath });
       await this.recordSwitchStage('after-close', id);
       // Capture the last token refresh performed while the desktop was closing.
       await this.syncCurrent(true);

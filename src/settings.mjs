@@ -1,11 +1,15 @@
-export const DEFAULT_SETTINGS = Object.freeze({ refreshMode: 'manual', activeIntervalSeconds: 60, inactiveIntervalSeconds: 300 });
+export const DEFAULT_SETTINGS = Object.freeze({ refreshMode: 'manual', activeIntervalSeconds: 60, inactiveIntervalSeconds: 300, switchMode: 'manual', switchStrategy: 'fiveHour', accountOrder: Object.freeze([]) });
 
 export function validateSettings(value) {
   if (!value || !['manual', 'automatic'].includes(value.refreshMode)) throw new Error('Scegli aggiornamento manuale o automatico.');
   for (const field of ['activeIntervalSeconds', 'inactiveIntervalSeconds']) {
     if (!Number.isInteger(value[field]) || value[field] < 10 || value[field] > 86400) throw new Error('Gli intervalli devono essere compresi tra 10 secondi e 24 ore.');
   }
-  return { refreshMode: value.refreshMode, activeIntervalSeconds: value.activeIntervalSeconds, inactiveIntervalSeconds: value.inactiveIntervalSeconds };
+  const { switchMode = 'manual', switchStrategy = 'fiveHour', accountOrder = [] } = value;
+  if (!['manual', 'automatic'].includes(switchMode)) throw new Error('Scegli cambio manuale o automatico.');
+  if (!['fiveHour', 'weekly', 'ordered', 'custom'].includes(switchStrategy)) throw new Error('Criterio di cambio non valido.');
+  if (!Array.isArray(accountOrder) || accountOrder.some(id => typeof id !== 'string' || id.length > 80) || new Set(accountOrder).size !== accountOrder.length) throw new Error('Ordine account non valido.');
+  return { refreshMode: value.refreshMode, activeIntervalSeconds: value.activeIntervalSeconds, inactiveIntervalSeconds: value.inactiveIntervalSeconds, switchMode, switchStrategy, accountOrder: [...accountOrder] };
 }
 
 export function accountDue(account, activeKey, settings, now) {
