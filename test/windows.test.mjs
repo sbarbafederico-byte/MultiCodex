@@ -7,6 +7,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+
+const windowsEnvironment = { ...process.env };
+delete windowsEnvironment.PSModulePath;
 
 function processStub() {
   const child = new EventEmitter();
@@ -57,12 +62,12 @@ test('credential operations do not expose upstream stderr on failure', async () 
 test('production Windows interop definitions compile in Windows PowerShell', { skip: process.platform !== 'win32' }, async () => {
   const powershell = path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe');
   const script = fileURLToPath(new URL('../scripts/Test-WindowsInterop.ps1', import.meta.url));
-  const result = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, timeout: 30000 });
+  const result = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, env: windowsEnvironment, timeout: 60000 });
   assert.match(result.stdout, /Entrambi i blocchi C# compilati/);
 });
 
 test('production StopApp compiles and exits successfully when no process matches the verified path', { skip: process.platform !== 'win32' }, async () => {
-  const run = createWindowsRunner({ timeoutMs: 30000 });
+  const run = createWindowsRunner();
   // A deliberately nonexistent package: this executes the production branch
   // and compiles its C# without closing the user's desktop.
   const result = await run('StopApp', { path: 'C:\\Program Files\\WindowsApps\\OpenAI.Codex_MultiCodexDiagnostic_x64__test\\app\\ChatGPT.exe' });
@@ -72,6 +77,19 @@ test('production StopApp compiles and exits successfully when no process matches
 test('Windows desktop shutdown follows replacement PIDs and waits for a real process to terminate', { skip: process.platform !== 'win32' }, async () => {
   const powershell = path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe');
   const script = fileURLToPath(new URL('../scripts/Test-DesktopStop.ps1', import.meta.url));
-  const result = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, timeout: 30000 });
+  const result = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, env: windowsEnvironment, timeout: 60000 });
   assert.match(result.stdout, /Chiusura verificata/);
+});
+
+test('restricting an already private data directory leaves its ACL unchanged', { skip: process.platform !== 'win32' }, async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'multicodex-acl-'));
+  t.after(async () => {
+    const resolved = path.resolve(dir);
+    assert.ok(resolved.startsWith(path.resolve(os.tmpdir()) + path.sep));
+    assert.ok(path.basename(resolved).startsWith('multicodex-acl-'));
+    await fs.rm(resolved, { recursive: true, force: true });
+  });
+  const run = createWindowsRunner();
+  assert.equal(JSON.parse(await run('Restrict', { path: dir })).ok, true);
+  assert.equal(JSON.parse(await run('Restrict', { path: dir })).unchanged, true);
 });

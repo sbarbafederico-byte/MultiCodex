@@ -23,8 +23,22 @@ try {
             $taskDir = [IO.Path]::GetFullPath($taskInput.path)
             $taskInfo = New-Object IO.DirectoryInfo($taskDir)
             $taskAcl = $taskInfo.GetAccessControl([Security.AccessControl.AccessControlSections]::Access)
-            $taskAcl.SetAccessRuleProtection($true, $false)
             $taskSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+            $taskRules = @($taskAcl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+            $taskInheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
+            # Reapplying an inheritable ACL traverses the browser profiles. Avoid
+            # that expensive write when the required private ACL is already set.
+            if ($taskAcl.AreAccessRulesProtected -and $taskRules.Count -eq 1 -and
+                $taskRules[0].IdentityReference -eq $taskSid -and
+                $taskRules[0].AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and
+                $taskRules[0].FileSystemRights -eq [Security.AccessControl.FileSystemRights]::FullControl -and
+                $taskRules[0].InheritanceFlags -eq $taskInheritance -and
+                $taskRules[0].PropagationFlags -eq [Security.AccessControl.PropagationFlags]::None -and
+                -not $taskRules[0].IsInherited) {
+                '{"ok":true,"unchanged":true}'
+                break
+            }
+            $taskAcl.SetAccessRuleProtection($true, $false)
             $taskRule = New-Object Security.AccessControl.FileSystemAccessRule($taskSid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
             $taskAcl.AddAccessRule($taskRule)
             [Console]::Error.WriteLine('MULTICODEX_STAGE=permissions')

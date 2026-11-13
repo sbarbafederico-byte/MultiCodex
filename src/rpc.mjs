@@ -18,8 +18,8 @@ export class CodexRpc extends EventEmitter {
     // stderr may contain private data; deliberately never persist or forward it.
     this.child.stderr.resume();
     this.child.stdin.on('error', () => {});
-    this.child.on('error', () => this.fail(new Error('Impossibile avviare il motore Codex.')));
-    this.child.on('exit', () => this.fail(new Error('Il motore Codex si è chiuso.')));
+    this.child.on('error', () => this.fail(Object.assign(new Error('Impossibile avviare il motore Codex.'), { code: 'CODEX_ENGINE_START_FAILED' })));
+    this.child.on('exit', () => this.fail(Object.assign(new Error('Il motore Codex si è chiuso.'), { code: 'CODEX_ENGINE_CLOSED' })));
     this.lines = createInterface({ input: this.child.stdout });
     this.lines.on('line', line => {
       let msg;
@@ -51,7 +51,7 @@ export class CodexRpc extends EventEmitter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error('Codex non ha risposto in tempo. Riprova.'));
+        reject(Object.assign(new Error('Codex non ha risposto in tempo. Riprova.'), { code: 'CODEX_RPC_TIMEOUT' }));
       }, timeout);
       this.pending.set(id, { resolve, reject, timer });
       this.send({ id, method, params });

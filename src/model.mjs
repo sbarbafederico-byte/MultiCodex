@@ -59,6 +59,10 @@ export function normalizeLimits(result) {
 }
 
 export function classifyError(error) {
+  if (error.code === 'SESSION_SAVE_FAILED') return { status: 'error', message: 'Salvataggio locale della sessione non riuscito. Riprova; non occorre ricollegare l’account.' };
+  if (error.windowsAction) return { status: 'error', message: error.message };
+  if (error.code === 'CODEX_ENGINE_START_FAILED' || error.code === 'CODEX_ENGINE_CLOSED') return { status: 'error', message: 'Motore Codex non disponibile. Riprova Aggiorna; se persiste, riapri MultiCodex.' };
+  if (error.code === 'CODEX_RPC_TIMEOUT') return { status: 'error', message: 'Il motore Codex non ha risposto in tempo durante la lettura dei limiti. Riprova Aggiorna.' };
   const message = (error.upstream || error.message || '').toLowerCase();
   if (/\b401\b|unauthori|token.*(?:expired|revoked|reused)|refresh_token_(?:expired|reused|invalid)|invalid_grant|sign.?in|authentication (?:failed|required)|not logged/.test(message)) {
     return { status: 'reauth', message: 'Accesso da rinnovare. Usa «Ricollega» per accedere di nuovo.' };

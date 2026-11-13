@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { Hub } from '../src/hub.mjs';
-import { identityFromAuth, normalizeLimits } from '../src/model.mjs';
+import { identityFromAuth, normalizeLimits, classifyError } from '../src/model.mjs';
 import { Vault } from '../src/vault.mjs';
 
 function auth(user, workspace = 'workspace') {
@@ -136,6 +136,65 @@ test('inactive rotation is saved even if the subsequent quota read fails', async
   }), /network failure/);
   assert.equal(account.auth.tokens.refresh_token, 'refresh-two-rotated');
   assert.equal((await fs.readdir(path.join(hub.vault.root, 'work'))).length, 0);
+});
+
+test('reading an unchanged inactive session does not rewrite the encrypted vault', async t => {
+  const { hub, vault } = await fixture(t);
+  const saved = auth('two');
+  const account = hub.upsert(saved, identityFromAuth(saved));
+  vault.save = async () => { throw new Error('Unexpected write'); };
+  await hub.withAccount(account, rpc => rpc.request('account/read', { refreshToken: false }));
+  assert.deepEqual(account.auth, saved);
+  assert.deepEqual(await fs.readdir(path.join(vault.root, 'work')), []);
+});
+
+test('failure to persist a rotated token retains the work directory and reports a local error', async t => {
+  const { hub, vault } = await fixture(t);
+  const saved = auth('two');
+  const account = hub.upsert(saved, identityFromAuth(saved));
+  vault.save = async () => { throw new Error('DPAPI unavailable'); };
+  await assert.rejects(hub.withAccount(account, rpc => rpc.request('account/rateLimits/read')), error => {
+    assert.equal(error.code, 'SESSION_SAVE_FAILED');
+    assert.match(classifyError(error).message, /Salvataggio locale/);
+    assert.equal(classifyError(error).status, 'error');
+    return true;
+  });
+  assert.equal((await fs.readdir(path.join(vault.root, 'work'))).length, 1);
+});
+
+test('engine and Windows failures preserve quota samples and expose the correct local cause', async t => {
+  const { hub } = await fixture(t);
+  const saved = auth('two');
+  const account = hub.upsert(saved, identityFromAuth(saved));
+  const previousLimits = { fiveHour: { remaining: 45 }, weekly: { remaining: 70 } };
+  account.limits = previousLimits; account.updatedAt = '2026-01-01T00:00:00Z';
+  for (const [error, expected] of [
+    [Object.assign(new Error('private'), { code: 'CODEX_ENGINE_START_FAILED' }), /Motore Codex non disponibile/],
+    [Object.assign(new Error('private'), { code: 'CODEX_RPC_TIMEOUT' }), /non ha risposto in tempo/],
+    [Object.assign(new Error('Timeout durante salvataggio cifrato'), { windowsAction: 'Protect' }), /salvataggio cifrato/],
+  ]) {
+    hub.withAccount = async () => { throw error; };
+    await hub.refreshAccount(account);
+    assert.match(account.error, expected);
+    assert.equal(account.status, 'error');
+    assert.deepEqual(account.limits, previousLimits);
+    assert.equal(account.updatedAt, '2026-01-01T00:00:00Z');
+  }
+});
+
+test('a pending rotated token save is retried even when the next read leaves auth unchanged', async t => {
+  const { hub, vault } = await fixture(t);
+  const saved = auth('two');
+  const account = hub.upsert(saved, identityFromAuth(saved));
+  vault.save = async () => { throw new Error('Temporary local failure'); };
+  await assert.rejects(hub.withAccount(account, rpc => rpc.request('account/rateLimits/read')));
+  assert.equal(account.sessionSavePending, true);
+  let saves = 0;
+  vault.save = async () => { saves++; };
+  await hub.withAccount(account, rpc => rpc.request('account/read', { refreshToken: false }));
+  assert.equal(saves, 1);
+  assert.equal(account.sessionSavePending, undefined);
+  assert.equal(account.auth.tokens.refresh_token, 'refresh-two-rotated');
 });
 
 test('switch saves the current session and installs refreshed target credentials', async t => {

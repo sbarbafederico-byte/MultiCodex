@@ -91,6 +91,8 @@ La versione 0.5.4 corregge una riga di diagnostica PowerShell inserita nel blocc
 
 La versione 0.5.5 attende l’uscita effettiva dei processi anziché controllare una sola volta dopo 700 ms. Dopo la richiesta di chiusura aggiorna l’elenco dei processi desktop, gestisce eventuali PID sostitutivi, riconferma il percorso prima della terminazione forzata e richiede un secondo senza processi prima di proseguire. La fase forzata ha una scadenza di 18 secondi. Non termina ricorsivamente l’albero dei processi. I test includono PID sostitutivi, processi che resistono alla chiusura e la terminazione reale di un processo di prova.
 
+La versione 0.5.6 evita di riapplicare i permessi della cartella dati quando sono già esattamente quelli richiesti: la riscrittura delle ACL ereditabili poteva attraversare i profili browser e scadere. Le letture degli account inattivi non riscrivono l’archivio cifrato se le credenziali non sono cambiate; i rinnovi e i salvataggi precedentemente falliti continuano a essere salvati e recuperabili. Gli errori distinguono salvataggio locale, operazioni Windows, avvio/chiusura del motore e timeout delle richieste. Gli ultimi limiti validi restano visibili in caso di errore.
+
 Archivio in `%LOCALAPPDATA%\MultiCodex`:
 
 - `accounts.dpapi`: account, sessioni, email GamsGo e ultimi dati, cifrati con **Windows DPAPI CurrentUser**; `accounts.dpapi.bak` conserva la versione precedente cifrata.

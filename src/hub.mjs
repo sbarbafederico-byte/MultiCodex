@@ -137,7 +137,7 @@ export class Hub {
   }
   snapshot() {
     return {
-      version: '0.5.5', busy: this.busy, notice: this.notice,
+      version: '0.5.6', busy: this.busy, notice: this.notice,
       settings: this.settings(), automaticRefreshActive: this.settings().refreshMode === 'automatic' && this.presence.visible(),
       login: this.publicLogin(), switchJob: this.switchJob,
       startupWarning: this.startupWarning,
@@ -236,14 +236,20 @@ export class Hub {
         try {
           const latest = JSON.parse(await fs.readFile(path.join(home, 'auth.json'), 'utf8'));
           if (identityFromAuth(latest).key !== account.key) throw new Error('Identità dell’account cambiata.');
-          account.auth = latest;
-          await this.vault.save();
+          if (account.sessionSavePending || JSON.stringify(latest) !== JSON.stringify(account.auth)) {
+            account.auth = latest;
+            delete account.sessionSavePending;
+            try { await this.vault.save(); }
+            catch (error) { account.sessionSavePending = true; throw error; }
+          }
         } catch (error) {
           // A lost rotated token would require a new login; retain the protected workdir for recovery.
           if (error.code !== 'ENOENT') {
             account.status = 'error';
             account.error = 'Salvataggio della sessione non riuscito. Riprova prima di cambiare account.';
-            throw new Error(account.error);
+            const failure = new Error(account.error, { cause: error });
+            failure.code = 'SESSION_SAVE_FAILED';
+            throw failure;
           }
         }
       }
