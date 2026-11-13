@@ -28,6 +28,7 @@ export class Hub {
     this.Rpc = options.Rpc || CodexRpc;
     this.sleep = options.sleep || sleep;
     this.readinessAttempts = options.readinessAttempts || 25;
+    this.readinessTimeoutMs = options.readinessTimeoutMs || 90000;
     this.requireIndependentHost = options.requireIndependentHost || false;
     this.independentHost = options.independentHost || false;
     this.presence = new Presence();
@@ -59,7 +60,7 @@ export class Hub {
   }
   async reconcileInterruptedClose() {
     const journal = this.vault.data.switchJournal;
-    if (journal?.failureStage !== 'chiusura' || !journal.previousAuth || !this.runtime?.appRunning || this.runtime.agentReady === false || this.runtime.windowReady === false) return false;
+    if (!journal?.previousAuth || !this.runtime?.appRunning || this.runtime.agentReady === false || this.runtime.windowReady === false) return false;
     let previousKey;
     try { previousKey = identityFromAuth(journal.previousAuth).key; } catch { return false; }
     if (this.activeKey !== previousKey) return false;
@@ -78,7 +79,7 @@ export class Hub {
     }
     delete this.vault.data.switchJournal;
     await this.vault.save();
-    this.notice = 'Il cambio precedente si era fermato durante la chiusura. Codex è aperto con l’account precedente; puoi riprovare il cambio.';
+    this.notice = 'Recupero verificato: Codex è aperto con l’account precedente. Puoi riprovare il cambio.';
     return true;
   }
   async recoverWork() {
@@ -137,7 +138,7 @@ export class Hub {
   }
   snapshot() {
     return {
-      version: '0.5.6', busy: this.busy, notice: this.notice,
+      version: '0.5.7', busy: this.busy, notice: this.notice,
       settings: this.settings(), automaticRefreshActive: this.settings().refreshMode === 'automatic' && this.presence.visible(),
       login: this.publicLogin(), switchJob: this.switchJob,
       startupWarning: this.startupWarning,
@@ -405,15 +406,25 @@ export class Hub {
     return { ok: true };
   }
   async waitForDesktop(expectedKey) {
+    const deadline = Date.now() + this.readinessTimeoutMs;
+    let readFailed = false;
     for (let attempt = 0; attempt < this.readinessAttempts; attempt++) {
-      const runtime = await this.discover();
+      if (Date.now() >= deadline) break;
+      let runtime;
+      try { runtime = await this.discover(); }
+      catch (error) {
+        if (error.windowsAction !== 'Discover') throw error;
+        readFailed = true;
+        await this.sleep(1000);
+        continue;
+      }
       const auth = await this.currentAuth();
       let matches = false;
       try { matches = !!auth && identityFromAuth(auth).key === expectedKey; } catch {}
       if (runtime.appRunning && runtime.agentReady !== false && runtime.windowReady !== false && matches) return runtime;
       await this.sleep(1000);
     }
-    throw new Error('Codex non ha completato l’avvio con l’account atteso.');
+    throw new Error(readFailed ? 'Avvio non verificato: il rilevamento di Codex è stato temporaneamente indisponibile. Controlla il profilo aperto nell’app.' : 'Codex non ha completato l’avvio con l’account atteso.');
   }
   async verifyIndependentHost() {
     if (!this.requireIndependentHost) return;

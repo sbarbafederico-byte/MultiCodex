@@ -1,7 +1,7 @@
 function Get-MultiCodexDesktopProcesses {
     param([string]$ExpectedPath)
-    @(Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe' OR Name='Codex.exe'" -OperationTimeoutSec 8 | Where-Object {
-        $_.ExecutablePath -eq $ExpectedPath -and $_.CommandLine -notmatch ' --type=' -and
+    . (Join-Path $PSScriptRoot 'process-snapshot.ps1')
+    @(Get-MultiCodexDesktopRoots -Processes @(Get-MultiCodexProcessSnapshot) -ExpectedPath $ExpectedPath | Where-Object {
         (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue)
     })
 }
@@ -23,8 +23,10 @@ function Stop-MultiCodexDesktop {
         [scriptblock]$Terminate = {
             param($p, $expected)
             # Revalidate immediately before termination. Never kill a process tree.
-            $taskVerified = Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ProcessId)" -OperationTimeoutSec 8
-            if ($taskVerified -and $taskVerified.ExecutablePath -eq $expected -and $taskVerified.CommandLine -notmatch ' --type=') {
+            . (Join-Path $PSScriptRoot 'process-snapshot.ps1')
+            Initialize-MultiCodexProcessSnapshot
+            $taskVerifiedPath = [MultiCodex.ProcessSnapshot]::ImagePath([uint32]$p.ProcessId)
+            if ($taskVerifiedPath -eq $expected) {
                 $taskLiveProcess = Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
                 if ($taskLiveProcess -and -not $taskLiveProcess.HasExited) {
                     Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop

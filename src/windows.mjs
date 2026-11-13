@@ -30,6 +30,7 @@ return function windows(action, input = {}) {
       clearTimeout(timer);
       if (code !== 0) {
         const error = new Error('Operazione Windows non riuscita (' + action + ').');
+        error.windowsAction = action;
         // Launch/stop errors contain OS diagnostics only, never auth material.
         if (action === 'LaunchApp' || action === 'StopApp') error.message += ' ' + stderr.replace(/^MULTICODEX_STAGE=.*\r?\n?/gm, '').trim().slice(0, 500);
         return reject(error);
@@ -49,4 +50,5 @@ export async function unprotect(cipher) {
   const plain = await windows('Unprotect', { data: cipher });
   return JSON.parse(Buffer.from(plain, 'base64').toString('utf8'));
 }
-export async function discover() { return JSON.parse(await windows('Discover')); }
+const discoveryWindows = createWindowsRunner({ timeoutMs: 15000 });
+export async function discover() { return JSON.parse(await discoveryWindows('Discover')); }

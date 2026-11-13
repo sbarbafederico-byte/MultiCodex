@@ -342,6 +342,39 @@ test('failed target activation verifies a successful recovery before reporting i
   assert.equal(vault.data.switchJournal.failureStage, 'riapertura tramite Windows');
 });
 
+test('a transient discovery timeout does not immediately abort desktop readiness', async t => {
+  const { hub } = await fixture(t);
+  const current = auth('one');
+  await fs.writeFile(hub.authPath, JSON.stringify(current));
+  let calls = 0;
+  hub.discover = async () => {
+    if (++calls <= 2) throw Object.assign(new Error('Temporary timeout'), { windowsAction: 'Discover' });
+    return { appRunning: true, agentReady: true, windowReady: true };
+  };
+  assert.equal((await hub.waitForDesktop(identityFromAuth(current).key)).appRunning, true);
+  assert.equal(calls, 3);
+});
+
+test('persistent discovery failure reports unverified startup after bounded retries', async t => {
+  const { hub } = await fixture(t);
+  hub.readinessAttempts = 2;
+  let calls = 0;
+  hub.discover = async () => { calls++; throw Object.assign(new Error('Timeout'), { windowsAction: 'Discover' }); };
+  await assert.rejects(hub.waitForDesktop('expected'), /Avvio non verificato/);
+  assert.equal(calls, 2);
+});
+
+test('an interrupted transaction without a saved failure stage is reconciled only to the verified previous account', async t => {
+  const { hub } = await fixture(t);
+  const previous = auth('one');
+  hub.vault.data.switchJournal = { previousAuth: previous };
+  hub.activeKey = 'different';
+  assert.equal(await hub.reconcileInterruptedClose(), false);
+  hub.activeKey = identityFromAuth(previous).key;
+  assert.equal(await hub.reconcileInterruptedClose(), true);
+  assert.equal(hub.vault.data.switchJournal, undefined);
+});
+
 test('a close timeout still reopens and verifies the previous desktop before reporting failure', async t => {
   const { hub, calls } = await fixture(t);
   const current = auth('one'), targetAuth = auth('two');

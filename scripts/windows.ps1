@@ -46,9 +46,9 @@ try {
             '{"ok":true}'
         }
         'Discover' {
-            $taskApp = Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe' OR Name='Codex.exe'" -OperationTimeoutSec 8 | Where-Object {
-                $_.ExecutablePath -match '\\WindowsApps\\OpenAI\.Codex_[^\\]+\\app\\(ChatGPT|Codex)\.exe$' -and $_.CommandLine -notmatch ' --type='
-            } | Select-Object -First 1
+            . (Join-Path $PSScriptRoot 'process-snapshot.ps1')
+            $taskProcesses = @(Get-MultiCodexProcessSnapshot)
+            $taskApp = Get-MultiCodexDesktopRoots -Processes $taskProcesses | Select-Object -First 1
             $taskAppPath = if ($taskApp) { $taskApp.ExecutablePath } else { $null }
             if (-not $taskAppPath) {
                 $taskPackages = @(Get-ChildItem -LiteralPath "$env:ProgramFiles\WindowsApps" -Directory -Filter 'OpenAI.Codex_*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
@@ -60,14 +60,16 @@ try {
                     if ($taskAppPath) { break }
                 }
             }
-            $taskCli = Get-CimInstance Win32_Process -Filter "Name='codex.exe'" -OperationTimeoutSec 8 | Where-Object { $_.CommandLine -match '\bapp-server\b' -and $_.ExecutablePath -match '\\OpenAI\\Codex\\bin\\' } | Select-Object -First 1
+            $taskClis = @($taskProcesses | Where-Object { $_.Name -ieq 'codex.exe' -and $_.ExecutablePath -match '\\OpenAI\\Codex\\bin\\' })
+            $taskAppAgent = if ($taskApp) { $taskClis | Where-Object { $_.ParentProcessId -eq $taskApp.ProcessId } | Select-Object -First 1 } else { $null }
+            $taskCli = if ($taskAppAgent) { $taskAppAgent } else { $taskClis | Select-Object -First 1 }
             $taskCliPath = if ($taskCli) { $taskCli.ExecutablePath } elseif ($taskAppPath) { Join-Path (Split-Path $taskAppPath) 'resources\codex.exe' } else { $null }
-            $taskAppAgent = if ($taskApp) { Get-CimInstance Win32_Process -Filter "Name='codex.exe'" -OperationTimeoutSec 8 | Where-Object { $_.ParentProcessId -eq $taskApp.ProcessId -and $_.CommandLine -match '\bapp-server\b' } | Select-Object -First 1 } else { $null }
             $taskWindowReady = if ($taskApp) { [bool](Get-Process -Id $taskApp.ProcessId -ErrorAction SilentlyContinue).MainWindowHandle } else { $false }
             @{ appPath=$taskAppPath; cliPath=$taskCliPath; pid=$(if ($taskApp) { $taskApp.ProcessId } else { $null }); appRunning=[bool]$taskApp; agentReady=[bool]$taskAppAgent; windowReady=$taskWindowReady } | ConvertTo-Json -Compress
         }
         'HostStatus' {
-            $taskProcesses = @(Get-CimInstance Win32_Process -OperationTimeoutSec 8)
+            . (Join-Path $PSScriptRoot 'process-snapshot.ps1')
+            $taskProcesses = @(Get-MultiCodexProcessSnapshot)
             $taskCurrentPid = [int]$taskInput.pid
             $taskChain = @()
             $taskSeen = @{}

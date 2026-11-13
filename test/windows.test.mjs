@@ -93,3 +93,10 @@ test('restricting an already private data directory leaves its ACL unchanged', {
   assert.equal(JSON.parse(await run('Restrict', { path: dir })).ok, true);
   assert.equal(JSON.parse(await run('Restrict', { path: dir })).unchanged, true);
 });
+
+test('native snapshot detects real processes and distinguishes desktop roots from renderers', { skip: process.platform !== 'win32' }, async () => {
+  const powershell = path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe');
+  const script = fileURLToPath(new URL('../scripts/Test-ProcessSnapshot.ps1', import.meta.url));
+  const result = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, env: windowsEnvironment, timeout: 60000 });
+  assert.match(result.stdout, /Snapshot nativo verificato/);
+});

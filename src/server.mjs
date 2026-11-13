@@ -72,7 +72,7 @@ async function request(req, res) {
   try {
     if (url.pathname.startsWith('/api/')) {
       if (!authorized(req)) return json(res, 401, { error: 'Sessione hub non valida. Riapri MultiCodex dal desktop.' });
-      if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { app: 'MultiCodex', pid: process.pid, version: '0.5.6', host: process.env.MULTICODEX_HOST || 'direct' });
+      if (req.method === 'GET' && url.pathname === '/api/health') return json(res, 200, { app: 'MultiCodex', pid: process.pid, version: '0.5.7', host: process.env.MULTICODEX_HOST || 'direct' });
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res, 200, hub.snapshot());
       if (req.method === 'GET' && url.pathname === '/api/dashboard') {
         const activity = dashboard.snapshot();

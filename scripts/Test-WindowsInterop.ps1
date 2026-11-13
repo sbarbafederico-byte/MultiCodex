@@ -3,6 +3,10 @@ $taskErrors = $null
 $taskTokens = $null
 $taskAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'windows.ps1'), [ref]$taskTokens, [ref]$taskErrors)
 if ($taskErrors.Count) { throw ($taskErrors | Out-String) }
+Add-Type -Path (Join-Path $PSScriptRoot 'ProcessSnapshot.cs') -ErrorAction Stop
+$taskSnapshot = @([MultiCodex.ProcessSnapshot]::Read())
+if (-not ($taskSnapshot | Where-Object { $_.ProcessId -eq $PID })) { throw 'Il processo di prova non viene rilevato.' }
+if (-not [MultiCodex.ProcessSnapshot]::ImagePath([uint32]$PID)) { throw 'Il percorso del processo di prova non viene rilevato.' }
 $taskDefinitions = @($taskAst.FindAll({
     param($taskNode)
     $taskNode -is [Management.Automation.Language.CommandAst] -and $taskNode.GetCommandName() -eq 'Add-Type' -and
