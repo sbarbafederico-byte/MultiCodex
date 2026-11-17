@@ -139,3 +139,35 @@ test('an already continued quota failure is not replayed from a stale activity s
   hub.vault.data.continuity = { tasks: [{ originalTurnId: 'original', state: 'submitted' }] };
   assert.deepEqual(await controller.capture(), []);
 });
+
+test('historical completed continuation clears a checkpoint older than the recent activity window', async () => {
+  const {hub,controller,calls}=fixture();
+  hub.vault.data.continuity={createdAt:'2026-11-15T22:51:48Z',tasks:[{threadId:'thread',originalTurnId:'old',state:'error'}]};
+  controller.readActivity=async()=>({...active(),active:[],tracked:[{threadId:'thread',id:'later',status:'completed',startedAt:'2026-11-15T23:00:00Z'}]});
+  assert.equal(await controller.reconcile(),true);
+  assert.equal(hub.vault.data.continuity.tasks[0].state,'superseded');
+  assert.ok(!calls.some(c=>c.method==='turn/start'));
+  await controller.prepare([]);
+});
+
+test('uncertain sends stay fenced for missing, stale, unconfirmed or earlier evidence', async () => {
+  for(const evidence of ['missing','stale','earlier','same','unconfirmed']) {
+    const {hub,controller}=fixture();
+    hub.vault.data.continuity={createdAt:'2026-11-15T22:51:48Z',tasks:[{threadId:'thread',originalTurnId:'original',state:'submitting'}]};
+    const latest={threadId:'thread',id:evidence==='same'?'original':'later',status:evidence==='unconfirmed'?'inProgress':'completed',startedAt:evidence==='earlier'?'2026-11-15T21:00:00Z':'2026-11-15T23:00:00Z'};
+    controller.readActivity=async()=>({...active(),active:[],updatedAt:new Date(Date.now()-(evidence==='stale'?20000:0)).toISOString(),tracked:evidence==='missing'?[]:[latest]});
+    assert.equal(await controller.reconcile(),false);
+    await assert.rejects(controller.prepare([]),/ripresa precedente/);
+    assert.equal(hub.vault.data.continuity.tasks[0].state,'submitting');
+  }
+});
+
+test('later confirmed active turn resolves an uncertain send without issuing another prompt', async () => {
+  const {hub,controller,calls}=fixture();
+  hub.vault.data.continuity={createdAt:'2026-11-15T22:51:48Z',tasks:[{threadId:'thread',originalTurnId:'old',state:'submitting'}]};
+  const turn={threadId:'thread',id:'later',status:'inProgress',startedAt:'2026-11-15T23:00:00Z'};
+  controller.readActivity=async()=>({...active(),active:[turn],tracked:[turn]});
+  assert.equal(await controller.reconcile(),true);
+  assert.equal(hub.vault.data.continuity.tasks[0].state,'superseded');
+  assert.ok(!calls.some(c=>c.method));
+});

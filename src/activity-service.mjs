@@ -5,11 +5,13 @@ export class ActivityService {
     this.home = home; this.Worker = WorkerClass; this.timeoutMs = timeoutMs;
     this.inFlight = null;
   }
-  readFresh() {
-    if (this.inFlight) return this.inFlight;
+  readFresh(trackedThreads = []) {
+    const key = JSON.stringify([...new Set(trackedThreads)].sort());
+    if (this.inFlight) return this.inFlightKey === key ? this.inFlight : this.inFlight.then(() => this.readFresh(trackedThreads));
+    this.inFlightKey = key;
     const operation = new Promise((resolve, reject) => {
       const worker = this.worker = new this.Worker(new URL('./activity-worker.mjs', import.meta.url), {
-        workerData: { home: this.home }, execArgv: [],
+        workerData: { home: this.home, trackedThreads }, execArgv: [],
       });
       let settled = false;
       const finish = (error, value) => {

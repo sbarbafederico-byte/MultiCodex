@@ -75,3 +75,20 @@ test('a timed out activity worker is terminated and the next read uses a fresh w
   assert.equal(count, 2);
   assert.equal(terminated, 2);
 });
+
+test('tracked checkpoints read old completions without widening recent activity or exposing payloads', async t => {
+  const home = await fixture(t);
+  const history = new DatabaseSync(path.join(home, 'thread_history_1.sqlite'));
+  history.prepare('UPDATE thread_turns SET started_at=?, completed_at=? WHERE turn_id=?').run(1000,2000,'done');
+  history.close();
+  const result = readActivity(home, Date.now(), ['stale','stale','agent','missing']);
+  assert.deepEqual(result.tracked.map(t=>t.id), ['done']);
+  assert.ok(!result.recent.some(t=>t.id==='done'));
+  assert.ok(!JSON.stringify(result).includes('PRIVATE'));
+  const service = new ActivityService(home);
+  t.after(()=>service.close());
+  const untracked = service.readFresh();
+  const tracked = service.readFresh(['stale']);
+  assert.deepEqual((await untracked).tracked, []);
+  assert.equal((await tracked).tracked[0].id,'done');
+});

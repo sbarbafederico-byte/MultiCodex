@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const iso = seconds => Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : null;
 // The switch needs turn identities, not project scans, messages or rollout samples.
-export function readActivity(home, now = Date.now()) {
+export function readActivity(home, now = Date.now(), trackedThreads = []) {
   const databases = [];
   const open = relative => {
     const db = new DatabaseSync(path.join(home, relative), { readOnly: true });
@@ -37,6 +37,11 @@ export function readActivity(home, now = Date.now()) {
       if (!metadata.get(t.thread_id)) continue;
       if (main(t.thread_id)) recent.push(value(t));
     }
-    return { active, recent, uncertain: [], updatedAt: new Date(now).toISOString(), error: null };
+    const tracked = [];
+    for (const id of [...new Set(trackedThreads)].slice(0, 100)) {
+      const t = latestTurn.get(id);
+      if (t && metadata.get(id) && main(id)) tracked.push(value(t));
+    }
+    return { active, recent, tracked, uncertain: [], updatedAt: new Date(now).toISOString(), error: null };
   } finally { for (const db of databases.reverse()) db.close(); }
 }

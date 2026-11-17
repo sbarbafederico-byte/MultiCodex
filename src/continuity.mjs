@@ -51,11 +51,40 @@ export class Continuity {
     return [...tasks.values()].map(t => ({ threadId: t.threadId, originalTurnId: t.id, state: 'pending' }));
   }
   async prepare(tasks) {
+    await this.reconcile();
     if (this.hub.vault.data.continuity?.tasks.some(t => ['pending', 'submitting', 'error'].includes(t.state))) throw new Error('Una ripresa precedente richiede verifica nella conversazione.');
     this.hub.vault.data.continuity = { tasks, createdAt: new Date().toISOString() };
     await this.hub.vault.save();
     await this.close();
     if (tasks.length) this.status('running', 'Cambio account e ripresa delle attività in corso…');
+  }
+  async reconcile() {
+    const job = this.hub.vault.data.continuity;
+    const unresolved = job?.tasks.filter(t => ['pending', 'submitting', 'error'].includes(t.state)) || [];
+    if (!unresolved.length) return false;
+    const activity = await this.readActivity();
+    const age = Date.now() - Date.parse(activity.updatedAt);
+    if (activity.error || !Number.isFinite(age) || age < 0 || age > 10000) return false;
+    let changed = false;
+    for (const task of unresolved) {
+      const latest = activity.tracked?.find(t => t.threadId === task.threadId);
+      if (!latest) continue;
+      const terminal = ['completed', 'cancelled', 'failed', 'interrupted'].includes(latest.status);
+      const active = activity.active.some(t => t.threadId === latest.threadId && t.id === latest.id);
+      // A later observed turn supersedes the old checkpoint. An uncertain send
+      // remains fenced unless that later turn started after checkpoint creation.
+      const newer = latest.id !== task.originalTurnId &&
+        Date.parse(latest.startedAt) >= Date.parse(job.createdAt);
+      const neverSent = task.state !== 'submitting';
+      if ((newer && (terminal || active)) || (neverSent && latest.id === task.originalTurnId && (terminal || active))) {
+        task.state = 'superseded'; changed = true;
+      }
+    }
+    if (changed) await this.hub.vault.save();
+    if (job.tasks.every(t => !['pending', 'submitting', 'error'].includes(t.state))) {
+      this.status('success', 'Ripresa precedente verificata nella cronologia. Il cambio account è disponibile.');
+    }
+    return changed;
   }
   async resume() {
     const job = this.hub.vault.data.continuity;

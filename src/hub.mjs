@@ -51,6 +51,9 @@ export class Hub {
     if (!this.runtime.cliPath) throw new Error('Motore Codex non trovato. Apri Codex e riavvia MultiCodex.');
     await this.syncCurrent(true);
     await this.reconcileInterruptedClose();
+    // Check durable continuation checkpoints against history after a restart.
+    // An unavailable catalog must preserve the fence, not prevent hub startup.
+    await this.continuity?.reconcile().catch(() => {});
     if (this.vault.data.switchJournal) {
       const journal = this.vault.data.switchJournal;
       this.startupWarning = 'Il precedente cambio è stato interrotto. Controlla l’account attivo in Codex; il salvataggio di recupero è disponibile.';
@@ -138,7 +141,7 @@ export class Hub {
   }
   snapshot() {
     return {
-      version: '0.5.7', busy: this.busy, notice: this.notice,
+      version: '0.5.9', busy: this.busy, notice: this.notice,
       settings: this.settings(), automaticRefreshActive: this.settings().refreshMode === 'automatic' && this.presence.visible(),
       login: this.publicLogin(), switchJob: this.switchJob,
       startupWarning: this.startupWarning,

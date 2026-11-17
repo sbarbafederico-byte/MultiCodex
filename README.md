@@ -97,6 +97,8 @@ La versione 0.5.7 sostituisce WMI/CIM nelle operazioni di rilevamento, controllo
 
 La versione 0.5.8 ritenta una volta il rilevamento anche durante l'avvio dell'hub e prima di cambiare o ripristinare account. Ogni tentativo usa un nuovo processo Windows; due errori consecutivi prima del cambio lasciano desktop e credenziali intatti. Il timeout distingue compilazione del lettore, snapshot dei processi, selezione desktop, ricerca installazione e verifica finestra. Nei controlli locali ripetuti il timeout intermittente non è stato riprodotto: questi dettagli servono a identificare la fase se ricompare, senza aumentare la scadenza di 15 secondi.
 
+La versione 0.5.9 verifica i checkpoint di ripresa all'avvio e prima di un nuovo cambio. Consulta l'ultimo turno delle sole conversazioni coinvolte anche se è terminato da oltre due minuti. Un turno successivo confermato o un turno mai reinviato già concluso sblocca il vecchio checkpoint senza inviare altri prompt. Gli invii dall'esito incerto restano bloccati in assenza di prove successive, così come i checkpoint con cronologia non disponibile o non aggiornata.
+
 Archivio in `%LOCALAPPDATA%\MultiCodex`:
 
 - `accounts.dpapi`: account, sessioni, email GamsGo e ultimi dati, cifrati con **Windows DPAPI CurrentUser**; `accounts.dpapi.bak` conserva la versione precedente cifrata.
